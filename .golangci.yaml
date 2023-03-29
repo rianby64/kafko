@@ -1,0 +1,21 @@
+linters:
+  presets:
+    - import
+    - metalinter
+    - bugs
+    - complexity
+    - error
+    - module
+    - style
+    - performance
+    - test
+    - unused
+  disable:
+    - gci
+    - lll
+    - tagliatelle
+    - exhaustivestruct
+    - exhaustruct
+  # Run only fast linters from enabled linters set (first run won't be fast)
+  # Default: false
+  fast: false
