@@ -6,7 +6,7 @@ import (
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
-	kafkame "github.com/rianby64/kafko"
+	"github.com/rianby64/kafko"
 	"github.com/rianby64/kafko/log"
 )
 
@@ -26,9 +26,9 @@ func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
-	publisher := kafkame.NewPublisher(
-		func() kafkame.Writer {
-			writer := kafkame.NewWriter(
+	publisher := kafko.NewPublisher(
+		func() kafko.Writer {
+			writer := kafko.NewWriter(
 				cfg.KafkaUser,
 				cfg.KafkaPass,
 				cfg.KafkaTopic,

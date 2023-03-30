@@ -1,4 +1,4 @@
-package kafkame
+package kafko
 
 import (
 	"context"

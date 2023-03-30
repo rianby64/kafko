@@ -1,13 +1,15 @@
-package kafkame
+package kafko
 
 import "time"
+
+type ReaderFactory func() Reader
 
 type Options struct {
 	commitInterval    time.Duration
 	reconnectInterval time.Duration
 	processingTimeout time.Duration
 	processDroppedMsg ProcessDroppedMsgHandler
-	reader            Reader
+	readerFactory     ReaderFactory
 }
 
 func (opts *Options) WithCommitInterval(commitInterval time.Duration) *Options {
@@ -39,8 +41,8 @@ func (opts *Options) WithProcessDroppedMsg(processDroppedMsg ProcessDroppedMsgHa
 	return opts
 }
 
-func (opts *Options) WithReader(reader Reader) *Options {
-	opts.reader = reader
+func (opts *Options) WithReaderFactory(readerFactory ReaderFactory) *Options {
+	opts.readerFactory = readerFactory
 
 	return opts
 }

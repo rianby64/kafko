@@ -5,8 +5,9 @@ import (
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
-	kafkame "github.com/rianby64/kafko"
+	"github.com/rianby64/kafko"
 	"github.com/rianby64/kafko/log"
+	"github.com/segmentio/kafka-go"
 )
 
 type Config struct {
@@ -17,31 +18,40 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
+func handleMessage(log log.Logger, consumer *kafko.Listener) {
+	msg, errChan := consumer.MessageAndErrorChannels()
+
+	log.Printf("Received message: %s", string(<-msg))
+
+	errChan <- nil
+}
+
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
-	opts := kafkame.NewOptions()
-	consumer := kafkame.NewListener(
-		cfg.KafkaUser,
-		cfg.KafkaPass,
-		cfg.Name,
-		cfg.KafkaTopic,
-		cfg.KafkaBrokers,
-		log,
-		opts,
-	)
+	opts := kafko.NewOptions().WithReaderFactory(func() kafko.Reader {
+		return kafka.NewReader(kafka.ReaderConfig{
+			GroupID: cfg.Name,
+			Topic:   cfg.KafkaTopic,
+			Brokers: cfg.KafkaBrokers,
+			Dialer:  kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
+		})
+	})
+
+	consumer := kafko.NewListener(log, opts)
 
 	go func() {
-		if err := consumer.Listen(context.Background()); err != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		if err := consumer.Listen(ctx); err != nil {
 			log.Panicf(err, "err := consumer.Listen(context.Background())")
 		}
 	}()
 
 	for {
-		msg, errChan := consumer.MessageAndErrorChannels()
-		log.Printf(string(<-msg))
-		errChan <- nil
+		handleMessage(log, consumer)
 	}
 }
 

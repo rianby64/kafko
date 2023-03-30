@@ -1,8 +1,9 @@
 //nolint:wrapcheck
-package kafkame_test
+package kafko_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -48,13 +49,13 @@ func (m *MockKafkaReader) Close() error {
 func TestListen(t *testing.T) {
 	t.Parallel()
 
-	t.Run("Successful message processing", testSuccessfulMessageProcessing)
-	// t.Run("Error during message fetching", testErrorDuringMessageFetching)
+	t.Run("Successful message processing", TestSuccessfulMessageProcessing)
+	t.Run("Error unrecoverable during message fetching", TestUnrecoverableErrorDuringMessageFetching)
 	// t.Run("Message processing timeout", testMessageProcessingTimeout)
 	// t.Run("Context cancellation", testContextCancellation)
 }
 
-func testSuccessfulMessageProcessing(t *testing.T) {
+func TestSuccessfulMessageProcessing(t *testing.T) {
 	t.Parallel()
 
 	msg := []byte("test message")
@@ -62,27 +63,23 @@ func testSuccessfulMessageProcessing(t *testing.T) {
 	mockReader := new(MockKafkaReader)
 	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, nil)
 	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
-
 	mockReader.On("Close").Return(nil)
 
 	// Set up a simple logger to collect logs during testing
 	log := log.NewLogger()
 
-	// Set up test configurations and options
-	config := kafka.ReaderConfig{
-		Brokers: []string{"dummy:1234"},
-		GroupID: "test-group",
-		Topic:   "test-topic",
-	}
-
 	processingTimeout := 1 * time.Second
-	opts := listener.NewOptions().WithProcessingTimeout(processingTimeout).WithReader(mockReader)
+	opts := listener.NewOptions().
+		WithProcessingTimeout(processingTimeout).
+		WithReaderFactory(func() listener.Reader {
+			return mockReader
+		})
 
 	// Create a test context with a timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	listener := listener.NewListener("username", "password", "test-group", "test-topic", config.Brokers, log, opts)
+	listener := listener.NewListener(log, opts)
 
 	msgProcessed := false
 
@@ -104,4 +101,53 @@ func testSuccessfulMessageProcessing(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.True(t, msgProcessed)
+}
+
+func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
+	t.Parallel()
+
+	msg := []byte("test message")
+	errorForFetchMessage := errors.New("error for fetch message")
+
+	mockReader := new(MockKafkaReader)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, errorForFetchMessage)
+	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
+	mockReader.On("Close").Return(nil)
+
+	// Set up a simple logger to collect logs during testing
+	log := log.NewLogger()
+
+	processingTimeout := 1 * time.Second
+	opts := listener.NewOptions().
+		WithProcessingTimeout(processingTimeout).
+		WithReaderFactory(func() listener.Reader {
+			return mockReader
+		})
+
+	// Create a test context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	listener := listener.NewListener(log, opts)
+
+	msgProcessed := false
+
+	go func() {
+		// I want to be sure the msgChan and errChan behave as expected
+		msgChan, errChan := listener.MessageAndErrorChannels()
+		assert.Equal(t, msg, <-msgChan)
+		errChan <- nil
+
+		// If we are here it's because we have the expected message
+		msgProcessed = true
+
+		// So, shutdown
+		err := listener.Shutdown(ctx)
+		assert.NoError(t, err)
+	}()
+
+	err := listener.Listen(ctx)
+
+	assert.ErrorIs(t, err, errorForFetchMessage)
+	assert.False(t, msgProcessed)
 }

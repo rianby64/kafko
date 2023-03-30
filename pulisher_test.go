@@ -1,4 +1,4 @@
-package kafkame_test
+package kafko_test
 
 import (
 	"context"

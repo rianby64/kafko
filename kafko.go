@@ -1,4 +1,4 @@
-package kafkame
+package kafko
 
 import (
 	"crypto/tls"
@@ -15,7 +15,7 @@ const (
 	processingTimeout = time.Duration(5) * time.Second
 )
 
-func newDialer(username, password string) *kafka.Dialer {
+func NewDialer(username, password string) *kafka.Dialer {
 	dialer := &kafka.Dialer{
 		Timeout:   dialerTimeout,
 		DualStack: true,
@@ -41,6 +41,6 @@ func NewWriter(username, password, topic string, brokers []string) *kafka.Writer
 	return kafka.NewWriter(kafka.WriterConfig{
 		Brokers: brokers,
 		Topic:   topic,
-		Dialer:  newDialer(username, password),
+		Dialer:  NewDialer(username, password),
 	})
 }

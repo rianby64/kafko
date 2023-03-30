@@ -1,4 +1,4 @@
-package kafkame
+package kafko
 
 import (
 	"context"
@@ -25,6 +25,7 @@ type Reader interface {
 
 var (
 	ErrMessageDropped = errors.New("message dropped")
+	ErrNoCredentials  = errors.New("no credentials")
 )
 
 type Listener struct {
@@ -38,8 +39,8 @@ type Listener struct {
 	reconnectInterval time.Duration
 	processDroppedMsg ProcessDroppedMsgHandler
 
-	config kafka.ReaderConfig
-	reader Reader
+	readerFactory ReaderFactory
+	reader        Reader
 
 	uncommittedMsgs      []kafka.Message
 	uncommittedMsgsMutex *sync.Mutex
@@ -155,35 +156,33 @@ func (listener *Listener) handleCommitMessageError(err error) error {
 }
 
 // handleMessageError checks if the error is temporary or a timeout and
-// takes appropriate action based on the error type. If the error is not recoverable,
-// it attempts to reconnect to Kafka.
+// takes appropriate action based on the error type. If the error is recoverable,
+// it attempts to reconnect to Kafka. If the error is not recoverable, finish Kafka listening.
 func (listener *Listener) handleMessageError(ctx context.Context, err error) error {
 	// Check if the error is a Kafka error.
 	var kafkaError *kafka.Error
 
-	// If the error is temporary or a timeout, log a message and return nil.
+	// If the error is temporary or a timeout, log a message, try to reconnect and return nil.
 	if errors.As(err, &kafkaError) && (kafkaError.Temporary() || kafkaError.Timeout()) {
 		listener.log.Errorf(err, "Failed to read message, let's retry")
+
+		select {
+		// Let's reconnect after queue.reconnectInterval.
+		case <-time.After(listener.reconnectInterval):
+			listener.reconnectToKafka()
+
+		// If ctx.Done and reconnect hasn't started yet, then it's secure to exit.
+		case <-ctx.Done():
+			if err := ctx.Err(); err != nil {
+				return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (handleMessageError)")
+			}
+		}
 
 		return nil
 	}
 
-	// If the error is not recoverable, log a message and attempt to reconnect to Kafka.
-	listener.log.Errorf(err, "Failed to read message, let's reconnect")
-
-	select {
-	// Let's reconnect after queue.reconnectInterval.
-	case <-time.After(listener.reconnectInterval):
-		listener.reconnectToKafka()
-
-	// If ctx.Done and reconnect hasn't started yet, then it's secure to exit.
-	case <-ctx.Done():
-		if err := ctx.Err(); err != nil {
-			return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (handleMessageError)")
-		}
-	}
-
-	return nil
+	// If the error is not recoverable, finish Kafka.
+	return errors.Wrap(err, "Failed to read message, the error is not recoverable")
 }
 
 // commitUncommittedMessages commits all uncommitted messages to Kafka.
@@ -238,8 +237,8 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 // reconnectToKafka attempts to reconnect the Listener to the Kafka broker.
 // It returns an error if the connection fails.
 func (listener *Listener) reconnectToKafka() {
-	// Create a new Reader with the current configuration.
-	reader := kafka.NewReader(listener.config)
+	// Create a new Reader from the readerFactory.
+	reader := listener.readerFactory()
 	listener.reader = reader
 }
 
@@ -318,22 +317,18 @@ func (listener *Listener) Listen(ctx context.Context) error {
 
 // NewListener creates a new Listener instance with the provided configuration,
 // logger, and optional custom options.
-func NewListener(username, password, groupID, topic string, brokers []string, log Logger, opts ...*Options) *Listener {
-	// Create a Kafka ReaderConfig with the provided information.
-	config := kafka.ReaderConfig{
-		Brokers: brokers,
-		GroupID: groupID,
-		Topic:   topic,
-		Dialer:  newDialer(username, password),
-	}
-
+func NewListener(log Logger, opts ...*Options) *Listener {
 	// Set the default options.
 	finalOpts := &Options{
 		commitInterval:    commitInterval,
 		processDroppedMsg: defaultProcessDroppedMsg,
 		processingTimeout: processingTimeout,
 		reconnectInterval: reconnectInterval,
-		reader:            kafka.NewReader(config),
+		readerFactory: func() Reader {
+			log.Panicf(ErrNoCredentials, "Provide the reader via options.WithReaderFactory")
+
+			return nil
+		},
 	}
 
 	// Iterate through the provided custom options and override defaults if needed.
@@ -354,20 +349,20 @@ func NewListener(username, password, groupID, topic string, brokers []string, lo
 			finalOpts.processDroppedMsg = opt.processDroppedMsg
 		}
 
-		if opt.reader != nil {
-			finalOpts.reader = opt.reader
+		if opt.readerFactory != nil {
+			finalOpts.readerFactory = opt.readerFactory
 		}
 	}
 
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		config:    config,
 		lastMsg:   make(chan []byte, 1),
 		errorChan: make(chan error, 1),
+		log:       log,
 
-		reader: finalOpts.reader,
-		log:    log,
+		readerFactory: finalOpts.readerFactory,
+		reader:        finalOpts.readerFactory(),
 
 		commitTicker:      time.NewTicker(finalOpts.commitInterval),
 		reconnectInterval: finalOpts.reconnectInterval,
