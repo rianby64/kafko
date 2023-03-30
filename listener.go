@@ -29,8 +29,8 @@ var (
 )
 
 type Listener struct {
-	lastMsg   chan []byte
-	errorChan chan error
+	lastMessage chan []byte
+	errorChan   chan error
 
 	log Logger
 
@@ -85,13 +85,19 @@ func (listener *Listener) processError(ctx context.Context, message kafka.Messag
 // that occur during processing, following a similar approach to processError.
 func (listener *Listener) processMessageAndError(ctx context.Context, message kafka.Message) error {
 	select {
-	case listener.lastMsg <- message.Value:
+	case listener.lastMessage <- message.Value:
 		// Process the message and handle any errors.
 		if err := listener.processError(ctx, message); err != nil {
 			return errors.Wrap(err, "err := listener.processError(ctx, message)")
 		}
 
 	case <-time.After(listener.processingTimeout):
+		// Attempt to empty the listener.lastMsg channel if there is a message.
+		select {
+		case <-listener.lastMessage:
+		default:
+		}
+
 		// If processing times out, attempt to process the dropped message.
 		if err := listener.processDroppedMsg(&message, listener.log); err != nil {
 			listener.log.Errorf(err, "Failed to process message")
@@ -253,7 +259,7 @@ func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 
 // MessageAndErrorChannels returns the message and error channels for the Listener.
 func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error) {
-	return listener.lastMsg, listener.errorChan
+	return listener.lastMessage, listener.errorChan
 }
 
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
@@ -315,9 +321,7 @@ func (listener *Listener) Listen(ctx context.Context) error {
 	}
 }
 
-// NewListener creates a new Listener instance with the provided configuration,
-// logger, and optional custom options.
-func NewListener(log Logger, opts ...*Options) *Listener {
+func obtainFinalOpts(log Logger, opts []*Options) *Options {
 	// Set the default options.
 	finalOpts := &Options{
 		commitInterval:    commitInterval,
@@ -354,12 +358,28 @@ func NewListener(log Logger, opts ...*Options) *Listener {
 		}
 	}
 
+	return finalOpts
+}
+
+// NewListener creates a new Listener instance with the provided configuration,
+// logger, and optional custom options.
+func NewListener(log Logger, opts ...*Options) *Listener {
+	finalOpts := obtainFinalOpts(log, opts)
+
+	// lastMessage should have a buffer size of 1 to accommodate for the case when
+	// the consumer did not process the message within the `processingTimeout` period.
+	// In the Listen method, we attempt to empty the listener.lastMessage channel (only once)
+	// if the processingTimeout is reached. By setting the buffer size to 1, we ensure
+	// that the new message can be placed in the channel even if the previous message
+	// wasn't processed within the given timeout.
+	lastMessage := make(chan []byte, 1)
+
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		lastMsg:   make(chan []byte, 1),
-		errorChan: make(chan error, 1),
-		log:       log,
+		lastMessage: lastMessage,
+		errorChan:   make(chan error, 1),
+		log:         log,
 
 		readerFactory: finalOpts.readerFactory,
 		reader:        finalOpts.readerFactory(),

@@ -6,8 +6,8 @@ import (
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
-	"github.com/rianby64/kafko"
-	"github.com/rianby64/kafko/log"
+	"github.com/m3co/kafko"
+	"github.com/m3co/kafko/log"
 )
 
 const (

@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 
-	listener "github.com/rianby64/kafko"
-	log "github.com/rianby64/kafko/log"
+	listener "github.com/m3co/kafko"
+	log "github.com/m3co/kafko/log"
 )
 
 type MockKafkaReader struct {
@@ -108,10 +108,10 @@ func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
 	t.Parallel()
 
 	msg := []byte("test message")
-	errorForFetchMessage := errors.New("error for fetch message")
+	errorAtFetchMessage := errors.New("error at FetchMessage") //nolint:goerr113
 
 	mockReader := new(MockKafkaReader)
-	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, errorForFetchMessage)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, errorAtFetchMessage)
 	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
 	mockReader.On("Close").Return(nil)
 
@@ -149,7 +149,7 @@ func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
 
 	err := listener.Listen(ctx)
 
-	assert.ErrorIs(t, err, errorForFetchMessage)
+	assert.ErrorIs(t, err, errorAtFetchMessage)
 	assert.False(t, msgProcessed)
 }
 
@@ -157,10 +157,10 @@ func TestRecoverableErrorDuringMessageFetching(t *testing.T) {
 	t.Parallel()
 
 	msg := []byte("test message")
-	errorForFetchMessage := kafka.NetworkException
+	errorAtFetchMessage := kafka.NetworkException
 
 	mockReader := new(MockKafkaReader)
-	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, &errorForFetchMessage)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, &errorAtFetchMessage)
 	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
 	mockReader.On("Close").Return(nil)
 
@@ -205,4 +205,64 @@ func TestRecoverableErrorDuringMessageFetching(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.False(t, msgProcessed)
 	assert.GreaterOrEqual(t, reconnections, 2)
+}
+
+func TestMessageProcessingTimeout(t *testing.T) {
+	t.Parallel()
+
+	msg := []byte("test message")
+	mockReader := new(MockKafkaReader)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, nil)
+	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
+	mockReader.On("Close").Return(nil)
+
+	// Set up a simple logger to collect logs during testing
+	log := log.NewLogger()
+
+	reconnections := 0
+	droppedMessages := 0
+
+	// Create a test context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	opts := listener.NewOptions().
+		WithProcessingTimeout(1 * time.Second).
+		WithReaderFactory(func() listener.Reader {
+			reconnections++
+
+			return mockReader
+		}).
+		WithProcessDroppedMsg(func(msg *kafka.Message, log listener.Logger) error {
+			droppedMessages++
+
+			return errors.New("msg dropped") //nolint:goerr113
+		})
+
+	listener := listener.NewListener(log, opts)
+
+	msgProcessed := false
+
+	go func() {
+		// I want to be sure the msgChan and errChan behave as expected
+		msgChan, errChan := listener.MessageAndErrorChannels()
+
+		time.Sleep(2 * time.Second)
+
+		assert.Equal(t, msg, <-msgChan)
+		errChan <- nil
+
+		// If we are here it's because we have the expected message
+		msgProcessed = true
+
+		// So, shutdown
+		err := listener.Shutdown(ctx)
+		assert.NoError(t, err)
+	}()
+
+	err := listener.Listen(ctx)
+
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+	assert.False(t, msgProcessed)
+	assert.Equal(t, reconnections, 0)
 }

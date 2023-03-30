@@ -1,4 +1,4 @@
-module github.com/rianby64/kafko
+module github.com/m3co/kafko
 
 go 1.18
 

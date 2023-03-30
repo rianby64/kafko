@@ -13,7 +13,7 @@ Kafko is a simple and easy-to-use Go library for consuming and producing message
 ## Installation
 
 ```bash
-go get -u github.com/rianby64/kafko
+go get -u github.com/m3co/kafko
 ```
 
 ## Usage
@@ -25,7 +25,7 @@ package main
 
 import (
 	"context"
-	"github.com/rianby64/kafko"
+	"github.com/m3co/kafko"
 	"github.com/segmentio/kafka-go"
 )
 
