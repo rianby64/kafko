@@ -1,22 +1,76 @@
-# Kafkame
+# Kafko
 
-The purpose of this repo is to show a simple example of how to connect to kafka and
+Kafko is a simple and easy-to-use Go library for consuming and producing messages with Apache Kafka. It provides a clean and intuitive interface, allowing you to focus on your application logic without worrying about the underlying Kafka implementation details.
 
-- Publish
-- Listen
+## Features
 
-The core is located at `kafkame` directory. And, the examples of how to use `kafkame` are at `cmd` directory.
+- Clean and easy-to-understand API for consuming and producing messages
+- Support for user authentication with username and password
+- Flexible configuration options for Kafka consumers and producers
+- Customizable logger implementation
+- Interfaces for Kafka reader and writer, allowing you to provide your own custom implementations if needed
 
-Feel free to run `podman-compose up` and then run both listening and sending commands.
-
+## Installation
 
 ```bash
-podman exec -it kafkame_kafka1_1 bash
-kafka-topics.sh --create --topic orders --bootstrap-server localhost:9092 --replication-factor 1 --partitions 1
-
-cd cmd/listening
-go run main.go
-
-cd cmd/sending
-go run main.go
+go get -u github.com/rianby64/kafko
 ```
+
+## Usage
+
+### Kafka Consumer (Listener)
+
+```go
+package main
+
+import (
+	"context"
+	"github.com/rianby64/kafko"
+	"github.com/segmentio/kafka-go"
+)
+
+func handleMessage(log log.Logger, consumer *kafko.Listener) {
+	msg, errChan := consumer.MessageAndErrorChannels()
+
+	log.Printf("Received message: %s", string(<-msg))
+
+	errChan <- nil
+}
+
+func main() {
+    // Create a new Listener with the desired configuration
+    opts := kafko.NewOptions().WithReaderFactory(func() kafko.Reader {
+        return kafka.NewReader(kafka.ReaderConfig{
+            GroupID:   "your-group-id",
+            Topic:     "your-topic",
+            Brokers:   []string{"broker1:9092", "broker2:9092"},
+            Dialer:    kafko.NewDialer("username", "password"),
+        })
+    })
+
+	consumer := kafko.NewListener(log, opts)
+
+	go func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		if err := consumer.Listen(ctx); err != nil {
+			log.Panicf(err, "err := consumer.Listen(context.Background())")
+		}
+	}()
+
+	for {
+		handleMessage(log, consumer)
+	}
+}
+```
+
+### Kafka Producer (Notifier)
+
+[TODO]
+
+## Contributing
+Contributions to Kafko are welcome! If you find a bug or have a feature request, feel free to open an issue or submit a pull request.
+
+## License
+Kafko is released under the MIT License.
