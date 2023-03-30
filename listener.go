@@ -43,6 +43,9 @@ type Listener struct {
 
 	uncommittedMsgs      []kafka.Message
 	uncommittedMsgsMutex *sync.Mutex
+
+	shuttingDown      bool
+	shuttingDownMutex *sync.Mutex
 }
 
 // processError handles errors in processing messages.
@@ -257,6 +260,11 @@ func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
 // and closing the Kafka reader.
 func (listener *Listener) Shutdown(ctx context.Context) error {
+	listener.shuttingDownMutex.Lock()
+	defer listener.shuttingDownMutex.Unlock()
+
+	listener.shuttingDown = true
+
 	// Commit any uncommitted messages.
 	if err := listener.commitUncommittedMessages(ctx); err != nil {
 		listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
@@ -270,6 +278,13 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+func (listener *Listener) checkShutdown() bool {
+	listener.shuttingDownMutex.Lock()
+	defer listener.shuttingDownMutex.Unlock()
+
+	return listener.shuttingDown
+}
+
 // Listen starts the Listener to fetch and process messages from the Kafka topic.
 // It also starts the commit loop and handles message errors.
 func (listener *Listener) Listen(ctx context.Context) error {
@@ -280,6 +295,10 @@ func (listener *Listener) Listen(ctx context.Context) error {
 	for {
 		// Fetch a message from the Kafka topic.
 		message, err := listener.reader.FetchMessage(ctx)
+
+		if listener.checkShutdown() {
+			return nil
+		}
 
 		// If there's an error, handle the message error and continue to the next iteration.
 		if err != nil {
@@ -356,5 +375,6 @@ func NewListener(username, password, groupID, topic string, brokers []string, lo
 		processDroppedMsg: finalOpts.processDroppedMsg,
 
 		uncommittedMsgsMutex: &sync.Mutex{},
+		shuttingDownMutex:    &sync.Mutex{},
 	}
 }
