@@ -46,16 +46,6 @@ func (m *MockKafkaReader) Close() error {
 	return err
 }
 
-// func TestListen(t *testing.T) {
-// 	t.Parallel()
-
-// 	t.Run("Successful message processing", TestSuccessfulMessageProcessing)
-// 	t.Run("Error unrecoverable during message fetching", TestUnrecoverableErrorDuringMessageFetching)
-// 	t.Run("Error recoverable during message fetching", TestRecoverableErrorDuringMessageFetching)
-// 	// t.Run("Message processing timeout", testMessageProcessingTimeout)
-// 	// t.Run("Context cancellation", testContextCancellation)
-// }
-
 func TestSuccessfulMessageProcessing(t *testing.T) {
 	t.Parallel()
 
@@ -247,7 +237,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 		// I want to be sure the msgChan and errChan behave as expected
 		msgChan, errChan := listener.MessageAndErrorChannels()
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(3 * time.Second)
 
 		assert.Equal(t, msg, <-msgChan)
 		errChan <- nil
@@ -264,5 +254,6 @@ func TestMessageProcessingTimeout(t *testing.T) {
 
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.False(t, msgProcessed)
-	assert.Equal(t, reconnections, 0)
+	assert.Equal(t, 1, reconnections)
+	assert.GreaterOrEqual(t, droppedMessages, 1)
 }
