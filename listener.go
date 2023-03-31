@@ -291,12 +291,12 @@ func (listener *Listener) Listen(ctx context.Context) error {
 
 	// Continuously fetch and process messages.
 	for {
-		// Fetch a message from the Kafka topic.
-		message, err := listener.reader.FetchMessage(ctx)
-
 		if listener.checkShutdown() {
 			return nil
 		}
+
+		// Fetch a message from the Kafka topic.
+		message, err := listener.reader.FetchMessage(ctx)
 
 		if errors.Is(err, context.Canceled) {
 			return nil
