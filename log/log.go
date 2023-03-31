@@ -1,6 +1,8 @@
 package log
 
 import (
+	"fmt"
+
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog"
 )
@@ -9,6 +11,32 @@ type Logger interface {
 	Printf(format string, v ...any)
 	Panicf(err error, format string, v ...any)
 	Errorf(err error, format string, v ...any)
+}
+
+type MockLogger struct {
+	PrintMessages []string
+	PanicMessages []string
+	ErrorMessages []string
+	PanicErrors   []error
+	ErrorErrors   []error
+}
+
+func (m *MockLogger) Printf(format string, v ...interface{}) {
+	m.PrintMessages = append(m.PrintMessages, fmt.Sprintf(format, v...))
+}
+
+func (m *MockLogger) Panicf(err error, format string, v ...interface{}) {
+	m.PanicErrors = append(m.PanicErrors, err)
+	m.PanicMessages = append(m.PanicMessages, fmt.Sprintf(format, v...))
+}
+
+func (m *MockLogger) Errorf(err error, format string, v ...interface{}) {
+	m.ErrorErrors = append(m.ErrorErrors, err)
+	m.ErrorMessages = append(m.ErrorMessages, fmt.Sprintf(format, v...))
+}
+
+func NewMockLogger() *MockLogger {
+	return &MockLogger{}
 }
 
 type LoggerInternal struct {

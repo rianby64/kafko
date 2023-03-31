@@ -218,7 +218,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 	mockReader.On("Close").Return(nil)
 
 	// Set up a simple logger to collect logs during testing
-	log := log.NewLogger()
+	log := log.NewMockLogger()
 
 	reconnections := 0
 	droppedMessages := 0
@@ -267,4 +267,63 @@ func TestMessageProcessingTimeout(t *testing.T) {
 	assert.False(t, msgProcessed)
 	assert.Equal(t, 1, reconnections)
 	assert.GreaterOrEqual(t, droppedMessages, 2)
+}
+
+// TestCommitMessagesFailure verifies that the listener handles a recoverable error
+// when committing messages, reconnects to Kafka, and continues processing messages.
+func TestCommitMessagesFailure(t *testing.T) {
+	t.Parallel()
+
+	msg := []byte("test message")
+	errorAtCommitMessages := kafka.NetworkException
+
+	mockReader := new(MockKafkaReader)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, nil)
+	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(&errorAtCommitMessages)
+	mockReader.On("Close").Return(nil)
+
+	// Set up a simple logger to collect logs during testing
+	logs := log.NewMockLogger()
+	reconnections := 0
+
+	expectedLogs := &log.MockLogger{
+		PrintMessages: []string{"Kafka error, but this is a recoverable error so let's retry. Reason = err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : "},
+	}
+
+	opts := listener.NewOptions().
+		WithReaderFactory(func() listener.Reader {
+			reconnections++
+
+			return mockReader
+		})
+
+	// Create a test context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	listener := listener.NewListener(logs, opts)
+
+	msgProcessed := false
+
+	go func() {
+		// I want to be sure the msgChan and errChan behave as expected
+		msgChan, errChan := listener.MessageAndErrorChannels()
+
+		assert.Equal(t, msg, <-msgChan)
+		errChan <- nil
+
+		// If we are here it's because we have the expected message
+		msgProcessed = true
+
+		cancel()
+	}()
+
+	err := listener.Listen(ctx)
+
+	time.Sleep(1 * time.Second)
+
+	assert.NoError(t, err)
+	assert.True(t, msgProcessed)
+	assert.Equal(t, 1, reconnections)
+	assert.Equal(t, expectedLogs, logs)
 }

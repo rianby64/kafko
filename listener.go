@@ -25,11 +25,11 @@ type Reader interface {
 
 var (
 	ErrMessageDropped = errors.New("message dropped")
-	ErrNoCredentials  = errors.New("no credentials")
+	ErrResourceIsNil  = errors.New("resource is nil")
 )
 
 type Listener struct {
-	lastMessage chan []byte
+	messageChan chan []byte
 	errorChan   chan error
 
 	log Logger
@@ -85,7 +85,7 @@ func (listener *Listener) processError(ctx context.Context, message kafka.Messag
 // that occur during processing, following a similar approach to processError.
 func (listener *Listener) processMessageAndError(ctx context.Context, message kafka.Message) error {
 	select {
-	case listener.lastMessage <- message.Value:
+	case listener.messageChan <- message.Value:
 		// Process the message and handle any errors.
 		if err := listener.processError(ctx, message); err != nil {
 			return errors.Wrap(err, "err := listener.processError(ctx, message)")
@@ -94,7 +94,7 @@ func (listener *Listener) processMessageAndError(ctx context.Context, message ka
 	case <-time.After(listener.processingTimeout):
 		// Attempt to empty the listener.lastMsg channel if there is a message.
 		select {
-		case <-listener.lastMessage:
+		case <-listener.messageChan:
 		default:
 		}
 
@@ -135,7 +135,7 @@ func (listener *Listener) doCommitMessage(ctx context.Context, message kafka.Mes
 	// Attempt to commit all uncommitted messages.
 	if err := listener.commitUncommittedMessages(ctx); err != nil {
 		// If there's an error, handle it and return the wrapped error.
-		if err := listener.handleCommitMessageError(err); err != nil {
+		if err := listener.handleKafkaError(ctx, err); err != nil {
 			return errors.Wrap(err, "err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs)")
 		}
 	}
@@ -143,52 +143,39 @@ func (listener *Listener) doCommitMessage(ctx context.Context, message kafka.Mes
 	return nil
 }
 
-// handleCommitMessageError checks if the error is temporary or a timeout,
-// and logs the appropriate message. If the error is not recoverable, it wraps
-// and returns the error.
-func (listener *Listener) handleCommitMessageError(err error) error {
-	// Check if the error is a Kafka error.
+// handleKafkaError checks if the error is temporary or a timeout and
+// takes appropriate action based on the error type. If the error is recoverable,
+// it attempts to reconnect to Kafka. If the error is not recoverable, it wraps and returns the error.
+func (listener *Listener) handleKafkaError(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+
 	var kafkaError *kafka.Error
 
-	// If the error is temporary or a timeout, log a message and return nil.
-	if errors.As(err, &kafkaError) && (kafkaError.Temporary() || kafkaError.Timeout()) {
-		listener.log.Printf("Failed to commit message, but this is a recoverable error so let's retry. Reason = %v", err)
+	if errors.As(err, &kafkaError) {
+		if kafkaError.Temporary() || kafkaError.Timeout() {
+			listener.log.Printf("Kafka error, but this is a recoverable error so let's retry. Reason = %v", err)
 
-		return nil
+			select {
+			// Let's reconnect after queue.reconnectInterval.
+			case <-time.After(listener.reconnectInterval):
+				listener.reconnectToKafka()
+
+			// If ctx.Done and reconnect hasn't started yet, then it's secure to exit.
+			case <-ctx.Done():
+				if err := ctx.Err(); err != nil {
+					return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (handleKafkaError)")
+				}
+			}
+
+			// Return no error since it's a recoverable error
+			return nil
+		}
 	}
 
 	// If the error is not recoverable, wrap and return it.
 	return errors.Wrapf(err, "Failed to commit message, unrecoverable error")
-}
-
-// handleMessageError checks if the error is temporary or a timeout and
-// takes appropriate action based on the error type. If the error is recoverable,
-// it attempts to reconnect to Kafka. If the error is not recoverable, finish Kafka listening.
-func (listener *Listener) handleMessageError(ctx context.Context, err error) error {
-	// Check if the error is a Kafka error.
-	var kafkaError *kafka.Error
-
-	// If the error is temporary or a timeout, log a message, try to reconnect and return nil.
-	if errors.As(err, &kafkaError) && (kafkaError.Temporary() || kafkaError.Timeout()) {
-		listener.log.Errorf(err, "Failed to read message, let's retry")
-
-		select {
-		// Let's reconnect after queue.reconnectInterval.
-		case <-time.After(listener.reconnectInterval):
-			listener.reconnectToKafka()
-
-		// If ctx.Done and reconnect hasn't started yet, then it's secure to exit.
-		case <-ctx.Done():
-			if err := ctx.Err(); err != nil {
-				return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (handleMessageError)")
-			}
-		}
-
-		return nil
-	}
-
-	// If the error is not recoverable, finish Kafka.
-	return errors.Wrap(err, "Failed to read message, the error is not recoverable")
 }
 
 // commitUncommittedMessages commits all uncommitted messages to Kafka.
@@ -243,6 +230,11 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 // reconnectToKafka attempts to reconnect the Listener to the Kafka broker.
 // It returns an error if the connection fails.
 func (listener *Listener) reconnectToKafka() {
+	// Close the existing reader in order to avoid resource leaks
+	if err := listener.reader.Close(); err != nil {
+		listener.log.Errorf(err, "err := listener.reader.Close()")
+	}
+
 	// Create a new Reader from the readerFactory.
 	reader := listener.readerFactory()
 	listener.reader = reader
@@ -259,7 +251,7 @@ func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 
 // MessageAndErrorChannels returns the message and error channels for the Listener.
 func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error) {
-	return listener.lastMessage, listener.errorChan
+	return listener.messageChan, listener.errorChan
 }
 
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
@@ -270,7 +262,8 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 
 	listener.shuttingDown = true
 
-	// Commit any uncommitted messages.
+	// Commit any uncommitted messages. It's OK to not to process them further as
+	// logs will provide the missing content while trying to commit before shutting down.
 	if err := listener.commitUncommittedMessages(ctx); err != nil {
 		listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
 	}
@@ -305,10 +298,18 @@ func (listener *Listener) Listen(ctx context.Context) error {
 			return nil
 		}
 
+		if errors.Is(err, context.Canceled) {
+			return nil
+		}
+
 		// If there's an error, handle the message error and continue to the next iteration.
 		if err != nil {
-			if err := listener.handleMessageError(ctx, err); err != nil {
-				return errors.Wrap(err, "err := listener.handleMessageError(ctx, err)")
+			if err := listener.handleKafkaError(ctx, err); err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+
+				return errors.Wrap(err, "err := listener.handleKafkaError(ctx, err)")
 			}
 
 			continue
@@ -316,6 +317,10 @@ func (listener *Listener) Listen(ctx context.Context) error {
 
 		// Process the message and handle any errors.
 		if err := listener.processMessageAndError(ctx, message); err != nil {
+			if errors.Is(err, context.Canceled) {
+				return nil
+			}
+
 			return errors.Wrap(err, "err := listener.processMessage(ctx, message)")
 		}
 	}
@@ -329,7 +334,7 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 		processingTimeout: processingTimeout,
 		reconnectInterval: reconnectInterval,
 		readerFactory: func() Reader {
-			log.Panicf(ErrNoCredentials, "Provide the reader via options.WithReaderFactory")
+			log.Panicf(ErrResourceIsNil, "Provide the reader via options.WithReaderFactory")
 
 			return nil
 		},
@@ -366,19 +371,23 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 func NewListener(log Logger, opts ...*Options) *Listener {
 	finalOpts := obtainFinalOpts(log, opts)
 
-	// lastMessage should have a buffer size of 1 to accommodate for the case when
+	// messageChan should have a buffer size of 1 to accommodate for the case when
 	// the consumer did not process the message within the `processingTimeout` period.
-	// In the Listen method, we attempt to empty the listener.lastMessage channel (only once)
+	// In the Listen method, we attempt to empty the listener.messageChan channel (only once)
 	// if the processingTimeout is reached. By setting the buffer size to 1, we ensure
 	// that the new message can be placed in the channel even if the previous message
 	// wasn't processed within the given timeout.
-	lastMessage := make(chan []byte, 1)
+	messageChan := make(chan []byte, 1)
+
+	// errorChan has a buffer size of 1 to allow the sender to send an error without blocking
+	// if the receiver is not ready to receive it yet.
+	errorChan := make(chan error, 1)
 
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		lastMessage: lastMessage,
-		errorChan:   make(chan error, 1),
+		messageChan: messageChan,
+		errorChan:   errorChan,
 		log:         log,
 
 		readerFactory: finalOpts.readerFactory,
