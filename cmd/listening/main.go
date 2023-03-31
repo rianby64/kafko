@@ -32,10 +32,12 @@ func main() {
 
 	opts := kafko.NewOptions().WithReaderFactory(func() kafko.Reader {
 		return kafka.NewReader(kafka.ReaderConfig{
-			GroupID: cfg.Name,
-			Topic:   cfg.KafkaTopic,
-			Brokers: cfg.KafkaBrokers,
-			Dialer:  kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
+			GroupID:     cfg.Name,
+			Topic:       cfg.KafkaTopic,
+			Brokers:     cfg.KafkaBrokers,
+			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
+			Logger:      log,
+			ErrorLogger: log,
 		})
 	})
 

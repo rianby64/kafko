@@ -24,8 +24,9 @@ type Reader interface {
 }
 
 var (
-	ErrMessageDropped = errors.New("message dropped")
-	ErrResourceIsNil  = errors.New("resource is nil")
+	ErrMessageDropped     = errors.New("message dropped")
+	ErrResourceIsNil      = errors.New("resource is nil")
+	ErrExitProcessingLoop = errors.New("listener: exit processing loop")
 )
 
 type Listener struct {
@@ -198,13 +199,27 @@ func (listener *Listener) commitUncommittedMessages(ctx context.Context) error {
 	return nil
 }
 
-// runCommitLoop is responsible for periodically committing uncommitted messages.
-// It runs in a separate goroutine and stops when the provided context is done.
+// runCommitLoop is a method of the Listener struct that handles periodic committing of uncommitted messages.
+// It is designed to be run in a separate goroutine and will continue until the provided context is cancelled or completed.
+//
+// The method uses a ticker to trigger periodic commits and makes use of a defer function to ensure proper cleanup
+// in case of a panic or other unexpected situations. The defer function stops the ticker and attempts to commit any
+// remaining uncommitted messages.
+//
+// This method is part of a message processing system and is typically used in conjunction with other methods that handle
+// message reception and processing.
 func (listener *Listener) runCommitLoop(ctx context.Context) {
 	// Add the defer function to handle stopping the ticker and committing uncommitted messages
 	// in case the method returns due to a panic or other unexpected situations.
 	defer func() {
 		listener.commitTicker.Stop()
+
+		listener.shuttingDownMutex.Lock()
+		defer listener.shuttingDownMutex.Unlock()
+
+		if listener.shuttingDown {
+			return
+		}
 
 		if err := listener.commitUncommittedMessages(ctx); err != nil {
 			listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
@@ -276,11 +291,32 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (listener *Listener) checkShutdown() bool {
+func (listener *Listener) processTick(ctx context.Context) error {
 	listener.shuttingDownMutex.Lock()
 	defer listener.shuttingDownMutex.Unlock()
 
-	return listener.shuttingDown
+	if listener.shuttingDown {
+		return ErrExitProcessingLoop // exit with sentinel error
+	}
+
+	// Fetch a message from the Kafka topic.
+	message, err := listener.reader.FetchMessage(ctx)
+
+	// If there's an error, handle the message error and continue to the next iteration.
+	if err != nil {
+		if err := listener.handleKafkaError(ctx, err); err != nil {
+			return errors.Wrap(err, "err := listener.handleKafkaError(ctx, err)")
+		}
+
+		return nil
+	}
+
+	// Process the message and handle any errors.
+	if err := listener.processMessageAndError(ctx, message); err != nil {
+		return errors.Wrap(err, "err := listener.processMessage(ctx, message)")
+	}
+
+	return nil
 }
 
 // Listen starts the Listener to fetch and process messages from the Kafka topic.
@@ -291,37 +327,18 @@ func (listener *Listener) Listen(ctx context.Context) error {
 
 	// Continuously fetch and process messages.
 	for {
-		if listener.checkShutdown() {
+		err := listener.processTick(ctx)
+
+		if errors.Is(err, ErrExitProcessingLoop) {
 			return nil
 		}
-
-		// Fetch a message from the Kafka topic.
-		message, err := listener.reader.FetchMessage(ctx)
 
 		if errors.Is(err, context.Canceled) {
 			return nil
 		}
 
-		// If there's an error, handle the message error and continue to the next iteration.
 		if err != nil {
-			if err := listener.handleKafkaError(ctx, err); err != nil {
-				if errors.Is(err, context.Canceled) {
-					return nil
-				}
-
-				return errors.Wrap(err, "err := listener.handleKafkaError(ctx, err)")
-			}
-
-			continue
-		}
-
-		// Process the message and handle any errors.
-		if err := listener.processMessageAndError(ctx, message); err != nil {
-			if errors.Is(err, context.Canceled) {
-				return nil
-			}
-
-			return errors.Wrap(err, "err := listener.processMessage(ctx, message)")
+			return errors.Wrap(err, "err := listener.processTick(ctx)")
 		}
 	}
 }

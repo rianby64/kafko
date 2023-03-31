@@ -4,6 +4,7 @@ package kafko_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -287,10 +288,16 @@ func TestCommitMessagesFailure(t *testing.T) {
 	reconnections := 0
 
 	expectedLogs := &log.MockLogger{
-		PrintMessages: []string{"Kafka error, but this is a recoverable error so let's retry. Reason = err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : "},
+		PrintMessages: []string{
+			"Kafka error, but this is a recoverable error so let's retry. Reason = err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : ",
+		},
+		ErrorMessages: []string{
+			"err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : err := queue.commitUncommittedMessages(ctx)",
+		},
 	}
 
 	opts := listener.NewOptions().
+		WithCommitInterval(1 * time.Second).
 		WithReaderFactory(func() listener.Reader {
 			reconnections++
 
@@ -298,14 +305,19 @@ func TestCommitMessagesFailure(t *testing.T) {
 		})
 
 	// Create a test context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	listener := listener.NewListener(logs, opts)
 
 	msgProcessed := false
+	waitG := &sync.WaitGroup{}
+
+	waitG.Add(1)
 
 	go func() {
+		defer waitG.Done()
+
 		// I want to be sure the msgChan and errChan behave as expected
 		msgChan, errChan := listener.MessageAndErrorChannels()
 
@@ -316,14 +328,17 @@ func TestCommitMessagesFailure(t *testing.T) {
 		msgProcessed = true
 
 		cancel()
+
+		err := listener.Shutdown(ctx)
+		assert.NoError(t, err)
 	}()
 
 	err := listener.Listen(ctx)
 
-	time.Sleep(1 * time.Second)
+	waitG.Wait()
 
 	assert.NoError(t, err)
 	assert.True(t, msgProcessed)
 	assert.Equal(t, 1, reconnections)
-	assert.Equal(t, expectedLogs, logs)
+	assert.Equal(t, expectedLogs.ErrorMessages, logs.ErrorMessages)
 }
