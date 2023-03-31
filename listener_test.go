@@ -46,6 +46,8 @@ func (m *MockKafkaReader) Close() error {
 	return err
 }
 
+// TestSuccessfulMessageProcessing checks that a message is successfully processed
+// and the listener shuts down without any errors when everything works as expected.
 func TestSuccessfulMessageProcessing(t *testing.T) {
 	t.Parallel()
 
@@ -94,6 +96,9 @@ func TestSuccessfulMessageProcessing(t *testing.T) {
 	assert.True(t, msgProcessed)
 }
 
+// TestUnrecoverableErrorDuringMessageFetching tests the case when an unrecoverable
+// error occurs during FetchMessage, ensuring the listener returns the error
+// and does not process the message.
 func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
 	t.Parallel()
 
@@ -143,6 +148,9 @@ func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
 	assert.False(t, msgProcessed)
 }
 
+// TestRecoverableErrorDuringMessageFetching tests the case when a recoverable
+// error occurs during FetchMessage, ensuring the listener attempts to reconnect
+// and keeps running until the context deadline is exceeded.
 func TestRecoverableErrorDuringMessageFetching(t *testing.T) {
 	t.Parallel()
 
@@ -197,6 +205,9 @@ func TestRecoverableErrorDuringMessageFetching(t *testing.T) {
 	assert.GreaterOrEqual(t, reconnections, 2)
 }
 
+// TestMessageProcessingTimeout checks the scenario where the consumer does not
+// process a message within the defined processingTimeout, ensuring the listener
+// calls the processDroppedMsg function and continues to the next message.
 func TestMessageProcessingTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -213,11 +224,11 @@ func TestMessageProcessingTimeout(t *testing.T) {
 	droppedMessages := 0
 
 	// Create a test context with a timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 
 	opts := listener.NewOptions().
-		WithProcessingTimeout(1 * time.Second).
+		WithProcessingTimeout(100 * time.Millisecond).
 		WithReaderFactory(func() listener.Reader {
 			reconnections++
 
@@ -237,7 +248,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 		// I want to be sure the msgChan and errChan behave as expected
 		msgChan, errChan := listener.MessageAndErrorChannels()
 
-		time.Sleep(3 * time.Second)
+		time.Sleep(1 * time.Second)
 
 		assert.Equal(t, msg, <-msgChan)
 		errChan <- nil
@@ -255,5 +266,5 @@ func TestMessageProcessingTimeout(t *testing.T) {
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.False(t, msgProcessed)
 	assert.Equal(t, 1, reconnections)
-	assert.GreaterOrEqual(t, droppedMessages, 1)
+	assert.GreaterOrEqual(t, droppedMessages, 2)
 }
