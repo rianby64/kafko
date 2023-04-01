@@ -267,15 +267,6 @@ func (listener *Listener) reconnectToKafka() {
 	listener.reader = reader
 }
 
-// defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
-	// Log the dropped message with its content.
-	log.Errorf(ErrMessageDropped, "msg = %s", string(msg.Value))
-
-	// Return a predefined error for dropped messages.
-	return ErrMessageDropped
-}
-
 // MessageAndErrorChannels returns the message and error channels for the Listener.
 func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error) {
 	return listener.messageChan, listener.errorChan
@@ -357,62 +348,6 @@ func (listener *Listener) Listen(ctx context.Context) error {
 			return errors.Wrap(err, "err := listener.processTick(ctx)")
 		}
 	}
-}
-
-func obtainFinalOpts(log Logger, opts []*Options) *Options {
-	// Set the default options.
-	finalOpts := &Options{
-		commitInterval:    commitInterval,
-		processDroppedMsg: defaultProcessDroppedMsg,
-		processingTimeout: processingTimeout,
-		reconnectInterval: reconnectInterval,
-		readerFactory: func() Reader {
-			log.Panicf(ErrResourceIsNil, "Provide the reader via options.WithReaderFactory")
-
-			return nil
-		},
-
-		metricMessagesProcessed: &dummyIncrementer{},
-		metricMessagesDropped:   &dummyIncrementer{},
-		metricKafkaErrors:       &dummyIncrementer{},
-	}
-
-	// Iterate through the provided custom options and override defaults if needed.
-	for _, opt := range opts {
-		if opt.processingTimeout != 0 {
-			finalOpts.processingTimeout = opt.processingTimeout
-		}
-
-		if opt.reconnectInterval != 0 {
-			finalOpts.reconnectInterval = opt.reconnectInterval
-		}
-
-		if opt.commitInterval != 0 {
-			finalOpts.commitInterval = opt.commitInterval
-		}
-
-		if opt.processDroppedMsg != nil {
-			finalOpts.processDroppedMsg = opt.processDroppedMsg
-		}
-
-		if opt.readerFactory != nil {
-			finalOpts.readerFactory = opt.readerFactory
-		}
-
-		if opt.metricMessagesProcessed != nil {
-			finalOpts.metricMessagesProcessed = opt.metricMessagesProcessed
-		}
-
-		if opt.metricMessagesDropped != nil {
-			finalOpts.metricMessagesDropped = opt.metricMessagesDropped
-		}
-
-		if opt.metricKafkaErrors != nil {
-			finalOpts.metricKafkaErrors = opt.metricKafkaErrors
-		}
-	}
-
-	return finalOpts
 }
 
 // NewListener creates a new Listener instance with the provided configuration,

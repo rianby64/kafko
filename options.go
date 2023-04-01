@@ -1,16 +1,16 @@
 package kafko
 
-import "time"
+import (
+	"time"
+
+	"github.com/segmentio/kafka-go"
+)
 
 type ReaderFactory func() Reader
 
 type Incrementer interface {
 	Inc()
 }
-
-type dummyIncrementer struct{}
-
-func (*dummyIncrementer) Inc() {}
 
 // Options is a configuration struct for a Kafka consumer.
 type Options struct {
@@ -97,4 +97,73 @@ func (opts *Options) WithMetricKafkaErrors(metric Incrementer) *Options {
 // NewOptions creates a new Options instance with default values.
 func NewOptions() *Options {
 	return &Options{}
+}
+
+// defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
+func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
+	// Log the dropped message with its content.
+	log.Errorf(ErrMessageDropped, "msg = %s, key = %s, topic = %s, partition = %d, offset = %d", string(msg.Value), string(msg.Key), msg.Topic, msg.Partition, msg.Offset)
+
+	// Return a predefined error for dropped messages.
+	return ErrMessageDropped
+}
+
+type nopIncrementer struct{}
+
+func (n *nopIncrementer) Inc() {}
+
+func obtainFinalOpts(log Logger, opts []*Options) *Options {
+	// Set the default options.
+	finalOpts := &Options{
+		commitInterval:    commitInterval,
+		processDroppedMsg: defaultProcessDroppedMsg,
+		processingTimeout: processingTimeout,
+		reconnectInterval: reconnectInterval,
+		readerFactory: func() Reader {
+			log.Panicf(ErrResourceIsNil, "provide the reader")
+
+			return nil
+		},
+
+		metricMessagesProcessed: new(nopIncrementer),
+		metricMessagesDropped:   new(nopIncrementer),
+		metricKafkaErrors:       new(nopIncrementer),
+	}
+
+	// Iterate through the provided custom options and override defaults if needed.
+	for _, opt := range opts {
+		if opt.processingTimeout != 0 {
+			finalOpts.processingTimeout = opt.processingTimeout
+		}
+
+		if opt.reconnectInterval != 0 {
+			finalOpts.reconnectInterval = opt.reconnectInterval
+		}
+
+		if opt.commitInterval != 0 {
+			finalOpts.commitInterval = opt.commitInterval
+		}
+
+		if opt.processDroppedMsg != nil {
+			finalOpts.processDroppedMsg = opt.processDroppedMsg
+		}
+
+		if opt.readerFactory != nil {
+			finalOpts.readerFactory = opt.readerFactory
+		}
+
+		if opt.metricMessagesProcessed != nil {
+			finalOpts.metricMessagesProcessed = opt.metricMessagesProcessed
+		}
+
+		if opt.metricMessagesDropped != nil {
+			finalOpts.metricMessagesDropped = opt.metricMessagesDropped
+		}
+
+		if opt.metricKafkaErrors != nil {
+			finalOpts.metricKafkaErrors = opt.metricKafkaErrors
+		}
+	}
+
+	return finalOpts
 }
