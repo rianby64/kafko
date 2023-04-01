@@ -48,6 +48,10 @@ type Listener struct {
 
 	shuttingDown      bool
 	shuttingDownMutex *sync.Mutex
+
+	metricMessagesProcessed Incrementer
+	metricMessagesDropped   Incrementer
+	metricKafkaErrors       Incrementer
 }
 
 // processError handles errors in processing messages.
@@ -98,6 +102,8 @@ func (listener *Listener) processMessageAndError(ctx context.Context, message ka
 		case <-listener.messageChan:
 		default:
 		}
+
+		go listener.metricMessagesDropped.Inc()
 
 		// If processing times out, attempt to process the dropped message.
 		if err := listener.processDroppedMsg(&message, listener.log); err != nil {
@@ -189,8 +195,12 @@ func (listener *Listener) commitUncommittedMessages(ctx context.Context) error {
 	// If there are uncommitted messages, attempt to commit them.
 	if len(listener.uncommittedMsgs) > 0 {
 		if err := listener.reader.CommitMessages(ctx, listener.uncommittedMsgs...); err != nil {
+			go listener.metricKafkaErrors.Inc()
+
 			return errors.Wrapf(err, "err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = %v)", listener.uncommittedMsgs)
 		}
+
+		go listener.metricMessagesProcessed.Inc()
 
 		// Reset the uncommitted messages slice.
 		listener.uncommittedMsgs = nil
@@ -247,6 +257,8 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 func (listener *Listener) reconnectToKafka() {
 	// Close the existing reader in order to avoid resource leaks
 	if err := listener.reader.Close(); err != nil {
+		go listener.metricKafkaErrors.Inc()
+
 		listener.log.Errorf(err, "err := listener.reader.Close()")
 	}
 
@@ -285,6 +297,8 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 
 	// Close the Kafka reader.
 	if err := listener.reader.Close(); err != nil {
+		go listener.metricKafkaErrors.Inc()
+
 		return errors.Wrap(err, "queue.reader.Close()")
 	}
 
@@ -304,6 +318,8 @@ func (listener *Listener) processTick(ctx context.Context) error {
 
 	// If there's an error, handle the message error and continue to the next iteration.
 	if err != nil {
+		go listener.metricKafkaErrors.Inc()
+
 		if err := listener.handleKafkaError(ctx, err); err != nil {
 			return errors.Wrap(err, "err := listener.handleKafkaError(ctx, err)")
 		}
@@ -355,6 +371,10 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 
 			return nil
 		},
+
+		metricMessagesProcessed: &dummyIncrementer{},
+		metricMessagesDropped:   &dummyIncrementer{},
+		metricKafkaErrors:       &dummyIncrementer{},
 	}
 
 	// Iterate through the provided custom options and override defaults if needed.
@@ -377,6 +397,18 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 
 		if opt.readerFactory != nil {
 			finalOpts.readerFactory = opt.readerFactory
+		}
+
+		if opt.metricMessagesProcessed != nil {
+			finalOpts.metricMessagesProcessed = opt.metricMessagesProcessed
+		}
+
+		if opt.metricMessagesDropped != nil {
+			finalOpts.metricMessagesDropped = opt.metricMessagesDropped
+		}
+
+		if opt.metricKafkaErrors != nil {
+			finalOpts.metricKafkaErrors = opt.metricKafkaErrors
 		}
 	}
 
@@ -417,5 +449,9 @@ func NewListener(log Logger, opts ...*Options) *Listener {
 
 		uncommittedMsgsMutex: &sync.Mutex{},
 		shuttingDownMutex:    &sync.Mutex{},
+
+		metricMessagesProcessed: finalOpts.metricMessagesProcessed,
+		metricMessagesDropped:   finalOpts.metricMessagesDropped,
+		metricKafkaErrors:       finalOpts.metricKafkaErrors,
 	}
 }
