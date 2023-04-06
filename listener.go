@@ -35,7 +35,7 @@ type Listener struct {
 
 	log Logger
 
-	commitTicker      *time.Ticker
+	recommitTicker    *time.Ticker
 	processingTimeout time.Duration
 	reconnectInterval time.Duration
 	processDroppedMsg ProcessDroppedMsgHandler
@@ -222,7 +222,7 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 	// Add the defer function to handle stopping the ticker and committing uncommitted messages
 	// in case the method returns due to a panic or other unexpected situations.
 	defer func() {
-		listener.commitTicker.Stop()
+		listener.recommitTicker.Stop()
 
 		listener.shuttingDownMutex.Lock()
 		defer listener.shuttingDownMutex.Unlock()
@@ -239,7 +239,7 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 	// Loop until the context is done.
 	for {
 		select {
-		case <-listener.commitTicker.C:
+		case <-listener.recommitTicker.C:
 			// When the ticker ticks, commit uncommitted messages.
 			if err := listener.commitUncommittedMessages(ctx); err != nil {
 				listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
@@ -377,7 +377,7 @@ func NewListener(log Logger, opts ...*Options) *Listener {
 		readerFactory: finalOpts.readerFactory,
 		reader:        finalOpts.readerFactory(),
 
-		commitTicker:      time.NewTicker(finalOpts.commitInterval),
+		recommitTicker:    time.NewTicker(finalOpts.recommitInterval),
 		reconnectInterval: finalOpts.reconnectInterval,
 		processingTimeout: finalOpts.processingTimeout,
 		processDroppedMsg: finalOpts.processDroppedMsg,

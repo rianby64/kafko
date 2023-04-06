@@ -14,7 +14,7 @@ type Incrementer interface {
 
 // Options is a configuration struct for a Kafka consumer.
 type Options struct {
-	commitInterval    time.Duration            // Time interval between committing offsets.
+	recommitInterval  time.Duration            // Time interval between attempts to commit uncommitted messages.
 	reconnectInterval time.Duration            // Time interval between reconnect attempts.
 	processingTimeout time.Duration            // Maximum allowed time for processing a message.
 	processDroppedMsg ProcessDroppedMsgHandler // Handler function to process dropped messages.
@@ -25,10 +25,10 @@ type Options struct {
 	metricKafkaErrors       Incrementer // Incrementer for the number of Kafka errors.
 }
 
-// WithCommitInterval sets the commit interval for the Options instance.
+// WithRecommitInterval sets the commit interval for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithCommitInterval(commitInterval time.Duration) *Options {
-	opts.commitInterval = commitInterval
+func (opts *Options) WithRecommitInterval(recommitInterval time.Duration) *Options {
+	opts.recommitInterval = recommitInterval
 
 	return opts
 }
@@ -115,7 +115,7 @@ func (n *nopIncrementer) Inc() {}
 func obtainFinalOpts(log Logger, opts []*Options) *Options {
 	// Set the default options.
 	finalOpts := &Options{
-		commitInterval:    commitInterval,
+		recommitInterval:  commitInterval,
 		processDroppedMsg: defaultProcessDroppedMsg,
 		processingTimeout: processingTimeout,
 		reconnectInterval: reconnectInterval,
@@ -140,8 +140,8 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 			finalOpts.reconnectInterval = opt.reconnectInterval
 		}
 
-		if opt.commitInterval != 0 {
-			finalOpts.commitInterval = opt.commitInterval
+		if opt.recommitInterval != 0 {
+			finalOpts.recommitInterval = opt.recommitInterval
 		}
 
 		if opt.processDroppedMsg != nil {

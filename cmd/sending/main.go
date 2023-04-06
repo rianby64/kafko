@@ -46,7 +46,7 @@ func main() {
 		time.Sleep(sleepPublish)
 
 		payload := map[string]interface{}{
-			"id": 0,
+			"id": "this is my test. I want to publish",
 		}
 
 		if err := publisher.Publish(context.Background(), payload); err != nil {

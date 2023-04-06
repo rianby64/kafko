@@ -272,7 +272,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 
 // TestCommitMessagesFailure verifies that the listener handles a recoverable error
 // when committing messages, reconnects to Kafka, and continues processing messages.
-func TestCommitMessagesFailure(t *testing.T) {
+func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 	t.Parallel()
 
 	msg := []byte("test message")
@@ -297,7 +297,7 @@ func TestCommitMessagesFailure(t *testing.T) {
 	}
 
 	opts := listener.NewOptions().
-		WithCommitInterval(1 * time.Second).
+		WithRecommitInterval(1 * time.Second).
 		WithReaderFactory(func() listener.Reader {
 			reconnections++
 
