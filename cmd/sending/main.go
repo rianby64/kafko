@@ -8,6 +8,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/m3co/kafko"
 	"github.com/m3co/kafko/log"
+	"github.com/segmentio/kafka-go"
 )
 
 const (
@@ -25,6 +26,7 @@ type Config struct {
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
+	balancer := &kafka.RoundRobin{}
 
 	publisher := kafko.NewPublisher(
 		func() kafko.Writer {
@@ -33,6 +35,8 @@ func main() {
 				cfg.KafkaPass,
 				cfg.KafkaTopic,
 				cfg.KafkaBrokers,
+				balancer,
+				log,
 			)
 
 			return writer

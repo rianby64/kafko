@@ -37,12 +37,15 @@ func NewDialer(username, password string) *kafka.Dialer {
 	return dialer
 }
 
-func NewWriter(username, password, topic string, brokers []string) *kafka.Writer {
+func NewWriter(username, password, topic string, brokers []string, balancer kafka.Balancer, log Logger) *kafka.Writer {
 	writer := kafka.NewWriter(kafka.WriterConfig{
 		Brokers:          brokers,
 		Topic:            topic,
 		Dialer:           NewDialer(username, password),
 		CompressionCodec: kafka.Zstd.Codec(),
+		Balancer:         balancer,
+		ErrorLogger:      log,
+		Logger:           log,
 	})
 
 	writer.AllowAutoTopicCreation = true
