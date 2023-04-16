@@ -291,9 +291,6 @@ func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 		PrintMessages: []string{
 			"Kafka error, but this is a recoverable error so let's retry. Reason = err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : ",
 		},
-		ErrorMessages: []string{
-			"err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = [{ 0 0 0 [] [116 101 115 116 32 109 101 115 115 97 103 101] [] <nil> 0001-01-01 00:00:00 +0000 UTC}]): [13] : err := queue.commitUncommittedMessages(ctx)",
-		},
 	}
 
 	opts := listener.NewOptions().
@@ -327,8 +324,6 @@ func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 		// If we are here it's because we have the expected message
 		msgProcessed = true
 
-		cancel()
-
 		err := listener.Shutdown(ctx)
 		assert.NoError(t, err)
 	}()
@@ -340,5 +335,5 @@ func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 	assert.NoError(t, err)
 	assert.True(t, msgProcessed)
 	assert.Equal(t, 1, reconnections)
-	assert.Equal(t, expectedLogs.ErrorMessages, logs.ErrorMessages)
+	assert.Equal(t, expectedLogs.PrintMessages, logs.PrintMessages)
 }

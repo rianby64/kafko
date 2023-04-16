@@ -30,8 +30,9 @@ var (
 )
 
 type Listener struct {
-	messageChan chan []byte
-	errorChan   chan error
+	messageChan    chan []byte
+	errorChan      chan error
+	shuttingDownCh chan struct{}
 
 	log Logger
 
@@ -45,9 +46,6 @@ type Listener struct {
 
 	uncommittedMsgs      []kafka.Message
 	uncommittedMsgsMutex *sync.Mutex
-
-	shuttingDown      bool
-	shuttingDownMutex *sync.Mutex
 
 	metricMessagesProcessed Incrementer
 	metricMessagesDropped   Incrementer
@@ -81,6 +79,10 @@ func (listener *Listener) processError(ctx context.Context, message kafka.Messag
 		if err := ctx.Err(); err != nil {
 			return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (processMessage)")
 		}
+
+	case <-listener.shuttingDownCh:
+		// If the shutdown has started, exit the loop.
+		return ErrExitProcessingLoop
 	}
 
 	return nil
@@ -115,6 +117,10 @@ func (listener *Listener) processMessageAndError(ctx context.Context, message ka
 		if err := ctx.Err(); err != nil {
 			return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (processMessage)")
 		}
+
+	case <-listener.shuttingDownCh:
+		// If the shutdown has started, exit the loop.
+		return ErrExitProcessingLoop
 	}
 
 	return nil
@@ -174,6 +180,9 @@ func (listener *Listener) handleKafkaError(ctx context.Context, err error) error
 				if err := ctx.Err(); err != nil {
 					return errors.Wrap(err, "err := ctx.Err() (ctx.Done()) (handleKafkaError)")
 				}
+
+			case <-listener.shuttingDownCh:
+				return ErrExitProcessingLoop
 			}
 
 			// Return no error since it's a recoverable error
@@ -224,13 +233,6 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 	defer func() {
 		listener.recommitTicker.Stop()
 
-		listener.shuttingDownMutex.Lock()
-		defer listener.shuttingDownMutex.Unlock()
-
-		if listener.shuttingDown {
-			return
-		}
-
 		if err := listener.commitUncommittedMessages(ctx); err != nil {
 			listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
 		}
@@ -244,6 +246,10 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 			if err := listener.commitUncommittedMessages(ctx); err != nil {
 				listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
 			}
+
+		case <-listener.shuttingDownCh:
+			// If the shutdown has started, exit the loop.
+			return
 
 		case <-ctx.Done():
 			// If the context is done, exit the loop.
@@ -275,10 +281,14 @@ func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
 // and closing the Kafka reader.
 func (listener *Listener) Shutdown(ctx context.Context) error {
-	listener.shuttingDownMutex.Lock()
-	defer listener.shuttingDownMutex.Unlock()
+	listener.shuttingDownCh <- struct{}{}
 
-	listener.shuttingDown = true
+	close(listener.shuttingDownCh)
+
+	defer func() {
+		close(listener.errorChan)
+		close(listener.messageChan)
+	}()
 
 	// Commit any uncommitted messages. It's OK to not to process them further as
 	// logs will provide the missing content while trying to commit before shutting down.
@@ -297,13 +307,6 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 }
 
 func (listener *Listener) processTick(ctx context.Context) error {
-	listener.shuttingDownMutex.Lock()
-	defer listener.shuttingDownMutex.Unlock()
-
-	if listener.shuttingDown {
-		return ErrExitProcessingLoop // exit with sentinel error
-	}
-
 	// Fetch a message from the Kafka topic.
 	message, err := listener.reader.FetchMessage(ctx)
 
@@ -367,13 +370,16 @@ func NewListener(log Logger, opts ...*Options) *Listener {
 	// if the receiver is not ready to receive it yet.
 	errorChan := make(chan error, 1)
 
+	shuttingDownCh := make(chan struct{}, 1)
+
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		messageChan: messageChan,
-		errorChan:   errorChan,
-		log:         log,
+		messageChan:    messageChan,
+		errorChan:      errorChan,
+		shuttingDownCh: shuttingDownCh,
 
+		log:           log,
 		readerFactory: finalOpts.readerFactory,
 		reader:        finalOpts.readerFactory(),
 
@@ -383,7 +389,6 @@ func NewListener(log Logger, opts ...*Options) *Listener {
 		processDroppedMsg: finalOpts.processDroppedMsg,
 
 		uncommittedMsgsMutex: &sync.Mutex{},
-		shuttingDownMutex:    &sync.Mutex{},
 
 		metricMessagesProcessed: finalOpts.metricMessagesProcessed,
 		metricMessagesDropped:   finalOpts.metricMessagesDropped,
