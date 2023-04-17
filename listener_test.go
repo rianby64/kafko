@@ -81,6 +81,7 @@ func TestSuccessfulMessageProcessing(t *testing.T) {
 		// I want to be sure the msgChan and errChan behave as expected
 		msgChan, errChan := listener.MessageAndErrorChannels()
 		assert.Equal(t, msg, <-msgChan)
+
 		errChan <- nil
 
 		// If we are here it's because we have the expected message
@@ -91,9 +92,7 @@ func TestSuccessfulMessageProcessing(t *testing.T) {
 		assert.NoError(t, err)
 	}()
 
-	err := listener.Listen(ctx)
-
-	assert.NoError(t, err)
+	assert.NoError(t, listener.Listen(ctx))
 	assert.True(t, msgProcessed)
 }
 
@@ -249,7 +248,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 		// I want to be sure the msgChan and errChan behave as expected
 		msgChan, errChan := listener.MessageAndErrorChannels()
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(1 * time.Minute)
 
 		assert.Equal(t, msg, <-msgChan)
 		errChan <- nil
@@ -336,4 +335,59 @@ func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 	assert.True(t, msgProcessed)
 	assert.Equal(t, 1, reconnections)
 	assert.Equal(t, expectedLogs.PrintMessages, logs.PrintMessages)
+}
+
+// TestGracefulShutdownDuringMessageProcessing checks that the listener
+// shuts down gracefully while processing a message.
+func TestGracefulShutdownDuringMessageProcessing(t *testing.T) {
+	t.Parallel()
+
+	msg := []byte("test message")
+
+	mockReader := new(MockKafkaReader)
+	mockReader.On("FetchMessage", mock.Anything).Return(kafka.Message{Value: msg}, nil)
+	mockReader.On("CommitMessages", mock.Anything, []kafka.Message{{Value: msg}}).Return(nil)
+	mockReader.On("Close").Return(nil)
+
+	// Set up a simple logger to collect logs during testing
+	log := log.NewLogger()
+
+	processingTimeout := 1 * time.Second
+	opts := listener.NewOptions().
+		WithProcessingTimeout(processingTimeout).
+		WithReaderFactory(func() listener.Reader {
+			return mockReader
+		})
+
+	// Create a test context with a timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	listener := listener.NewListener(log, opts)
+	listenerFinished := make(chan struct{})
+
+	go func() {
+		assert.ErrorIs(t, nil, listener.Listen(ctx))
+
+		close(listenerFinished)
+	}()
+
+	shutdownInitiated := make(chan struct{})
+
+	go func() {
+		// I want to be sure the msgChan and errChan behave as expected
+		msgChan, errChan := listener.MessageAndErrorChannels()
+		assert.Equal(t, msg, <-msgChan)
+
+		// Initiate shutdown while processing the message
+		close(shutdownInitiated)
+
+		errChan <- nil
+	}()
+
+	<-shutdownInitiated
+
+	assert.NoError(t, listener.Shutdown(ctx))
+
+	<-listenerFinished
 }
