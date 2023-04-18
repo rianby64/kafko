@@ -7,13 +7,27 @@ import (
 )
 
 type ReaderFactory func() Reader
+type WriterFactory func() Writer
 
 type Incrementer interface {
 	Inc()
 }
 
-// Options is a configuration struct for a Kafka consumer.
-type Options struct {
+type nopIncrementer struct{}
+
+func (n *nopIncrementer) Inc() {}
+
+// defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
+func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
+	// Log the dropped message with its content.
+	log.Errorf(ErrMessageDropped, "msg = %s, key = %s, topic = %s, partition = %d, offset = %d", string(msg.Value), string(msg.Key), msg.Topic, msg.Partition, msg.Offset)
+
+	// Return a predefined error for dropped messages.
+	return ErrMessageDropped
+}
+
+// OptionsListener is a configuration struct for a Kafka consumer.
+type OptionsListener struct {
 	recommitInterval  time.Duration            // Time interval between attempts to commit uncommitted messages.
 	reconnectInterval time.Duration            // Time interval between reconnect attempts.
 	processingTimeout time.Duration            // Maximum allowed time for processing a message.
@@ -27,7 +41,7 @@ type Options struct {
 
 // WithRecommitInterval sets the commit interval for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithRecommitInterval(recommitInterval time.Duration) *Options {
+func (opts *OptionsListener) WithRecommitInterval(recommitInterval time.Duration) *OptionsListener {
 	opts.recommitInterval = recommitInterval
 
 	return opts
@@ -35,7 +49,7 @@ func (opts *Options) WithRecommitInterval(recommitInterval time.Duration) *Optio
 
 // WithReconnectInterval sets the reconnect interval for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithReconnectInterval(reconnectInterval time.Duration) *Options {
+func (opts *OptionsListener) WithReconnectInterval(reconnectInterval time.Duration) *OptionsListener {
 	opts.reconnectInterval = reconnectInterval
 
 	return opts
@@ -43,7 +57,7 @@ func (opts *Options) WithReconnectInterval(reconnectInterval time.Duration) *Opt
 
 // WithProcessingTimeout sets the processing timeout for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithProcessingTimeout(processingTimeout time.Duration) *Options {
+func (opts *OptionsListener) WithProcessingTimeout(processingTimeout time.Duration) *OptionsListener {
 	opts.processingTimeout = processingTimeout
 
 	return opts
@@ -51,7 +65,7 @@ func (opts *Options) WithProcessingTimeout(processingTimeout time.Duration) *Opt
 
 // WithProcessDroppedMsg sets the dropped message processing handler for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithProcessDroppedMsg(processDroppedMsg ProcessDroppedMsgHandler) *Options {
+func (opts *OptionsListener) WithProcessDroppedMsg(processDroppedMsg ProcessDroppedMsgHandler) *OptionsListener {
 	pdm := defaultProcessDroppedMsg
 	if processDroppedMsg != nil {
 		pdm = processDroppedMsg
@@ -64,7 +78,7 @@ func (opts *Options) WithProcessDroppedMsg(processDroppedMsg ProcessDroppedMsgHa
 
 // WithReaderFactory sets the reader factory function for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithReaderFactory(readerFactory ReaderFactory) *Options {
+func (opts *OptionsListener) WithReaderFactory(readerFactory ReaderFactory) *OptionsListener {
 	opts.readerFactory = readerFactory
 
 	return opts
@@ -72,7 +86,7 @@ func (opts *Options) WithReaderFactory(readerFactory ReaderFactory) *Options {
 
 // WithMetricMessagesProcessed sets the messages processed incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithMetricMessagesProcessed(metric Incrementer) *Options {
+func (opts *OptionsListener) WithMetricMessagesProcessed(metric Incrementer) *OptionsListener {
 	opts.metricMessagesProcessed = metric
 
 	return opts
@@ -80,7 +94,7 @@ func (opts *Options) WithMetricMessagesProcessed(metric Incrementer) *Options {
 
 // WithMetricMessagesDropped sets the messages dropped incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithMetricMessagesDropped(metric Incrementer) *Options {
+func (opts *OptionsListener) WithMetricMessagesDropped(metric Incrementer) *OptionsListener {
 	opts.metricMessagesDropped = metric
 
 	return opts
@@ -88,33 +102,20 @@ func (opts *Options) WithMetricMessagesDropped(metric Incrementer) *Options {
 
 // WithMetricKafkaErrors sets the Kafka errors incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *Options) WithMetricKafkaErrors(metric Incrementer) *Options {
+func (opts *OptionsListener) WithMetricKafkaErrors(metric Incrementer) *OptionsListener {
 	opts.metricKafkaErrors = metric
 
 	return opts
 }
 
-// NewOptions creates a new Options instance with default values.
-func NewOptions() *Options {
-	return &Options{}
+// NewOptionsListener creates a new Options instance with default values.
+func NewOptionsListener() *OptionsListener {
+	return &OptionsListener{}
 }
 
-// defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
-	// Log the dropped message with its content.
-	log.Errorf(ErrMessageDropped, "msg = %s, key = %s, topic = %s, partition = %d, offset = %d", string(msg.Value), string(msg.Key), msg.Topic, msg.Partition, msg.Offset)
-
-	// Return a predefined error for dropped messages.
-	return ErrMessageDropped
-}
-
-type nopIncrementer struct{}
-
-func (n *nopIncrementer) Inc() {}
-
-func obtainFinalOpts(log Logger, opts []*Options) *Options {
+func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener {
 	// Set the default options.
-	finalOpts := &Options{
+	finalOpts := &OptionsListener{
 		recommitInterval:  commitInterval,
 		processDroppedMsg: defaultProcessDroppedMsg,
 		processingTimeout: processingTimeout,
@@ -166,4 +167,48 @@ func obtainFinalOpts(log Logger, opts []*Options) *Options {
 	}
 
 	return finalOpts
+}
+
+type OptionsPublisher struct {
+	writerFactory     WriterFactory
+	processDroppedMsg ProcessDroppedMsgHandler
+}
+
+func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *OptionsPublisher {
+	opts.writerFactory = writerFactory
+
+	return opts
+}
+
+func (opts *OptionsPublisher) WithProcessDroppedMsg(handler ProcessDroppedMsgHandler) *OptionsPublisher {
+	opts.processDroppedMsg = handler
+
+	return opts
+}
+
+func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *OptionsPublisher {
+	finalOpts := &OptionsPublisher{
+		writerFactory: func() Writer {
+			log.Panicf(ErrResourceIsNil, "provide the writer")
+
+			return nil
+		},
+		processDroppedMsg: defaultProcessDroppedMsg,
+	}
+
+	for _, opt := range opts {
+		if opt.writerFactory != nil {
+			finalOpts.writerFactory = opt.writerFactory
+		}
+
+		if opt.processDroppedMsg != nil {
+			finalOpts.processDroppedMsg = opt.processDroppedMsg
+		}
+	}
+
+	return finalOpts
+}
+
+func NewOptionsPublisher() *OptionsPublisher {
+	return &OptionsPublisher{}
 }

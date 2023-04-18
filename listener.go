@@ -45,7 +45,7 @@ type Listener struct {
 	reader        Reader
 
 	uncommittedMsgs      []kafka.Message
-	uncommittedMsgsMutex *sync.Mutex
+	uncommittedMsgsMutex sync.Locker
 
 	metricMessagesProcessed Incrementer
 	metricMessagesDropped   Incrementer
@@ -283,8 +283,8 @@ func (listener *Listener) processTick(ctx context.Context) error {
 
 // NewListener creates a new Listener instance with the provided configuration,
 // logger, and optional custom options.
-func NewListener(log Logger, opts ...*Options) *Listener {
-	finalOpts := obtainFinalOpts(log, opts)
+func NewListener(log Logger, opts ...*OptionsListener) *Listener {
+	finalOpts := obtainFinalOptsListener(log, opts)
 
 	// messageChan should have a buffer size of 1 to accommodate for the case when
 	// the consumer did not process the message within the `processingTimeout` period.

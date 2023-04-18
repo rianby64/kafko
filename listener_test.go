@@ -63,7 +63,7 @@ func TestSuccessfulMessageProcessing(t *testing.T) {
 	log := log.NewLogger()
 
 	processingTimeout := 1 * time.Second
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithProcessingTimeout(processingTimeout).
 		WithReaderFactory(func() listener.Reader {
 			return mockReader
@@ -114,7 +114,7 @@ func TestUnrecoverableErrorDuringMessageFetching(t *testing.T) {
 	log := log.NewLogger()
 
 	processingTimeout := 1 * time.Second
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithProcessingTimeout(processingTimeout).
 		WithReaderFactory(func() listener.Reader {
 			return mockReader
@@ -171,7 +171,7 @@ func TestRecoverableErrorDuringMessageFetching(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithProcessingTimeout(1 * time.Second).
 		WithReconnectInterval(1 * time.Second).
 		WithReaderFactory(func() listener.Reader {
@@ -227,7 +227,7 @@ func TestMessageProcessingTimeout(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 250*time.Millisecond)
 	defer cancel()
 
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithProcessingTimeout(100 * time.Millisecond).
 		WithReaderFactory(func() listener.Reader {
 			reconnections++
@@ -292,7 +292,7 @@ func TestCommitMessagesFailure(t *testing.T) { //nolint:funlen
 		},
 	}
 
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithRecommitInterval(1 * time.Second).
 		WithReaderFactory(func() listener.Reader {
 			reconnections++
@@ -353,7 +353,7 @@ func TestGracefulShutdownDuringMessageProcessing(t *testing.T) {
 	log := log.NewLogger()
 
 	processingTimeout := 1 * time.Second
-	opts := listener.NewOptions().
+	opts := listener.NewOptionsListener().
 		WithProcessingTimeout(processingTimeout).
 		WithReaderFactory(func() listener.Reader {
 			return mockReader

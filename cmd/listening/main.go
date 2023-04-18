@@ -10,6 +10,10 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+const (
+	maxBytes = 2 << 21
+)
+
 type Config struct {
 	Name         string   `env:"NAME" envDefault:"name"`
 	KafkaUser    string   `env:"KAFKA_USER"`
@@ -30,7 +34,7 @@ func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
-	opts := kafko.NewOptions().WithReaderFactory(func() kafko.Reader {
+	opts := kafko.NewOptionsListener().WithReaderFactory(func() kafko.Reader {
 		return kafka.NewReader(kafka.ReaderConfig{
 			GroupID:     cfg.Name,
 			Topic:       cfg.KafkaTopic,
@@ -38,6 +42,7 @@ func main() {
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			Logger:      log,
 			ErrorLogger: log,
+			MaxBytes:    maxBytes,
 		})
 	})
 

@@ -13,6 +13,7 @@ import (
 
 const (
 	sleepPublish = time.Millisecond * time.Duration(100)
+	maxBytes     = 2 << 21
 )
 
 type Config struct {
@@ -28,21 +29,23 @@ func main() {
 	cfg := loadConfig(log)
 	balancer := &kafka.RoundRobin{}
 
-	publisher := kafko.NewPublisher(
-		func() kafko.Writer {
-			writer := kafko.NewWriter(
-				cfg.KafkaUser,
-				cfg.KafkaPass,
-				cfg.KafkaTopic,
-				cfg.KafkaBrokers,
-				balancer,
-				log,
-			)
+	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
+		writer := kafka.NewWriter(kafka.WriterConfig{
+			Brokers:          cfg.KafkaBrokers,
+			Topic:            cfg.KafkaTopic,
+			Dialer:           kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
+			CompressionCodec: kafka.Zstd.Codec(),
+			Balancer:         balancer,
+			ErrorLogger:      log,
+			Logger:           log,
+		})
 
-			return writer
-		},
-		log,
-	)
+		writer.AllowAutoTopicCreation = true
+
+		return writer
+	})
+
+	publisher := kafko.NewPublisher(log, opts)
 
 	index := 0
 
@@ -59,7 +62,7 @@ func main() {
 			continue
 		}
 
-		log.Printf("sent...")
+		log.Printf("sent... %d", index)
 		index++
 	}
 }
