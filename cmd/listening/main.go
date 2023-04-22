@@ -40,7 +40,6 @@ func main() {
 			Topic:       cfg.KafkaTopic,
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
-			Logger:      log,
 			ErrorLogger: log,
 			MaxBytes:    maxBytes,
 		})

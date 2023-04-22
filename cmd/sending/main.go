@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	sleepPublish = time.Millisecond * time.Duration(100)
-	maxBytes     = 2 << 21
+	batchBytes   = 2 << 21
+	batchSize    = 100
+	batchTimeout = time.Second * 3
 )
 
 type Config struct {
@@ -24,10 +25,18 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
+type Duration struct {
+	log *log.LoggerInternal
+}
+
+func (d *Duration) Observe(duration float64) {
+	durationT := time.Duration(duration) * time.Millisecond
+	d.log.Printf("duration of writeMessage: %v", durationT)
+}
+
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
-	balancer := &kafka.RoundRobin{}
 
 	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
 		writer := kafka.NewWriter(kafka.WriterConfig{
@@ -35,14 +44,18 @@ func main() {
 			Topic:            cfg.KafkaTopic,
 			Dialer:           kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			CompressionCodec: kafka.Zstd.Codec(),
-			Balancer:         balancer,
 			ErrorLogger:      log,
 			Logger:           log,
+			BatchBytes:       batchBytes,
+			BatchSize:        batchSize,
+			BatchTimeout:     batchTimeout,
 		})
 
 		writer.AllowAutoTopicCreation = true
 
 		return writer
+	}).WithMetricDurationProcess(&Duration{
+		log: log,
 	})
 
 	publisher := kafko.NewPublisher(log, opts)
@@ -50,8 +63,6 @@ func main() {
 	index := 0
 
 	for {
-		time.Sleep(sleepPublish)
-
 		payload := map[string]interface{}{
 			"id":     index,
 			"update": true,

@@ -222,8 +222,8 @@ func (opts *OptionsPublisher) WithMetricErrors(metric Incrementer) *OptionsPubli
 	return opts
 }
 
-func (opts *OptionsListener) WithMetricDurationProcess(metric Duration) *OptionsListener {
-	opts.metricDurationProcess = metric
+func (opts *OptionsPublisher) WithMetricDurationProcess(metric Duration) *OptionsPublisher {
+	opts.metricDuration = metric
 
 	return opts
 }
