@@ -47,6 +47,8 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 	}
 
 	if err := publisher.writer.WriteMessages(ctx, message); err != nil {
+		publisher.opts.metricErrors.Inc()
+
 		if err := publisher.opts.processDroppedMsg(&message, publisher.log); err != nil {
 			publisher.log.Errorf(err, "err := queue.opts.processDroppedMsg(&message, queue.log)")
 		}
@@ -55,6 +57,8 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 
 		return errors.Wrap(err, "queue.writer.WriteMessages(ctx, messages...)")
 	}
+
+	publisher.opts.metricMessages.Inc()
 
 	return nil
 }

@@ -115,9 +115,9 @@ func (opts *OptionsListener) WithMetricMessagesDropped(metric Incrementer) *Opti
 	return opts
 }
 
-// WithMetricKafkaErrors sets the Kafka errors incrementer for the Options instance.
+// WithMetricErrors sets the Kafka errors incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithMetricKafkaErrors(metric Incrementer) *OptionsListener {
+func (opts *OptionsListener) WithMetricErrors(metric Incrementer) *OptionsListener {
 	opts.metricErrors = metric
 
 	return opts
@@ -210,6 +210,24 @@ func (opts *OptionsPublisher) WithProcessDroppedMsg(handler ProcessDroppedMsgHan
 	return opts
 }
 
+func (opts *OptionsPublisher) WithMetricMessages(metric Incrementer) *OptionsPublisher {
+	opts.metricMessages = metric
+
+	return opts
+}
+
+func (opts *OptionsPublisher) WithMetricErrors(metric Incrementer) *OptionsPublisher {
+	opts.metricErrors = metric
+
+	return opts
+}
+
+func (opts *OptionsListener) WithMetricDurationProcess(metric Duration) *OptionsListener {
+	opts.metricDurationProcess = metric
+
+	return opts
+}
+
 func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *OptionsPublisher {
 	finalOpts := &OptionsPublisher{
 		writerFactory: func() Writer {
@@ -230,6 +248,18 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 
 		if opt.processDroppedMsg != nil {
 			finalOpts.processDroppedMsg = opt.processDroppedMsg
+		}
+
+		if opt.metricMessages != nil {
+			finalOpts.metricMessages = opt.metricMessages
+		}
+
+		if opt.metricErrors != nil {
+			finalOpts.metricErrors = opt.metricErrors
+		}
+
+		if opt.metricDuration != nil {
+			finalOpts.metricDuration = opt.metricDuration
 		}
 	}
 
