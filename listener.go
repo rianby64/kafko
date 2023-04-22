@@ -40,6 +40,7 @@ type Listener struct {
 	processingTimeout time.Duration
 	reconnectInterval time.Duration
 	processDroppedMsg ProcessDroppedMsgHandler
+	processing        *sync.WaitGroup
 
 	readerFactory ReaderFactory
 	reader        Reader
@@ -229,7 +230,6 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 		}
 	}()
 
-	// Loop until the context is done.
 	for {
 		select {
 		case <-listener.recommitTicker.C:
@@ -265,6 +265,10 @@ func (listener *Listener) reconnectToKafka() {
 }
 
 func (listener *Listener) processTick(ctx context.Context) error {
+	listener.processing.Add(1)
+
+	defer listener.processing.Done()
+
 	// Fetch a message from the Kafka topic.
 	message, err := listener.reader.FetchMessage(ctx)
 
@@ -323,6 +327,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 		reconnectInterval: finalOpts.reconnectInterval,
 		processingTimeout: finalOpts.processingTimeout,
 		processDroppedMsg: finalOpts.processDroppedMsg,
+		processing:        &sync.WaitGroup{},
 
 		uncommittedMsgsMutex: &sync.Mutex{},
 		uncommittedMsgs:      make([]kafka.Message, 0),

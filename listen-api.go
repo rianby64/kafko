@@ -72,6 +72,8 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 		listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
 	}
 
+	listener.processing.Wait()
+
 	// Close the Kafka reader.
 	if err := listener.reader.Close(); err != nil {
 		go listener.metricKafkaErrors.Inc()

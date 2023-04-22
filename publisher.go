@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -20,8 +21,11 @@ type Writer interface {
 }
 
 type Publisher struct {
-	writer      Writer
-	writerMutex sync.Locker
+	writer         Writer
+	alreadyRewrote int32
+
+	writeErrs       *sync.WaitGroup
+	writeInProgress *sync.WaitGroup
 
 	alreadyClosed bool          // Add a closed flag to the Publisher struct
 	closed        chan struct{} // Mutex to protect the closed flag
@@ -30,14 +34,14 @@ type Publisher struct {
 	opts *OptionsPublisher
 }
 
-func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte) error {
-	publisher.writerMutex.Lock()
-
-	defer publisher.writerMutex.Unlock()
+func (publisher *Publisher) writeMessages(ctx context.Context, bytes []byte) error {
+	publisher.writeInProgress.Add(1)
 
 	start := time.Now()
 
 	defer func() {
+		publisher.writeInProgress.Done()
+
 		duration := time.Since(start)
 		publisher.opts.metricDuration.Observe(float64(duration.Milliseconds()))
 	}()
@@ -46,18 +50,27 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 		Value: bytes,
 	}
 
+	publisher.writeErrs.Wait()
+
 	if err := publisher.writer.WriteMessages(ctx, message); err != nil {
+		publisher.writeErrs.Add(1)
+
+		defer publisher.writeErrs.Done()
+
 		publisher.opts.metricErrors.Inc()
 
 		if err := publisher.opts.processDroppedMsg(&message, publisher.log); err != nil {
 			publisher.log.Errorf(err, "err := queue.opts.processDroppedMsg(&message, queue.log)")
 		}
 
-		publisher.writer = publisher.opts.writerFactory()
+		if atomic.CompareAndSwapInt32(&publisher.alreadyRewrote, 0, 1) {
+			publisher.writer = publisher.opts.writerFactory()
+		}
 
 		return errors.Wrap(err, "queue.writer.WriteMessages(ctx, messages...)")
 	}
 
+	atomic.StoreInt32(&publisher.alreadyRewrote, 0)
 	publisher.opts.metricMessages.Inc()
 
 	return nil
@@ -83,7 +96,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}
 			return errors.Wrap(err, "bytes, err := json.Marshal(payload)")
 		}
 
-		if err := publisher.writeSingleMessage(ctx, bytes); err != nil {
+		if err := publisher.writeMessages(ctx, bytes); err != nil {
 			lastError = err
 		}
 	}
@@ -101,9 +114,7 @@ func (publisher *Publisher) Shutdown(ctx context.Context) error {
 
 	close(publisher.closed)
 
-	publisher.writerMutex.Lock()
-
-	defer publisher.writerMutex.Unlock()
+	publisher.writeInProgress.Wait()
 
 	// Use the provided context to allow for cancelation or timeout
 	ctx, cancel := context.WithCancel(ctx)
@@ -128,10 +139,11 @@ func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 	finalOpts := obtainFinalOptionsPublisher(log, opts...)
 
 	return &Publisher{
-		writerMutex: &sync.Mutex{},
-		writer:      finalOpts.writerFactory(),
-		closed:      make(chan struct{}),
-		log:         log,
-		opts:        finalOpts,
+		writeErrs:       &sync.WaitGroup{},
+		writeInProgress: &sync.WaitGroup{},
+		writer:          finalOpts.writerFactory(),
+		closed:          make(chan struct{}),
+		log:             log,
+		opts:            finalOpts,
 	}
 }
