@@ -25,15 +25,6 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-type Duration struct {
-	log *log.LoggerInternal
-}
-
-func (d *Duration) Observe(duration float64) {
-	durationT := time.Duration(duration) * time.Millisecond
-	d.log.Printf("duration of writeMessage: %v", durationT)
-}
-
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
@@ -54,28 +45,40 @@ func main() {
 		writer.AllowAutoTopicCreation = true
 
 		return writer
-	}).WithMetricDurationProcess(&Duration{
-		log: log,
 	})
 
 	publisher := kafko.NewPublisher(log, opts)
 
 	index := 0
 
+	maxTaskAtOnce := make(chan struct{}, 400) //nolint:gomnd
+
 	for {
-		payload := map[string]interface{}{
+		go func(payload map[string]interface{}, index int) {
+			defer func() {
+				<-maxTaskAtOnce
+			}()
+
+			start := time.Now()
+
+			if err := publisher.Publish(context.Background(), payload); err != nil {
+				log.Errorf(err, "err := publisher.Publish(context.Background(), payload)")
+			}
+
+			log.Printf("sent... %d (%v)", index, time.Since(start))
+		}(map[string]interface{}{
 			"id":     index,
 			"update": true,
-		}
+		}, index)
 
-		if err := publisher.Publish(context.Background(), payload); err != nil {
-			log.Errorf(err, "err := publisher.Publish(context.Background(), payload)")
-
-			continue
-		}
-
-		log.Printf("sent... %d", index)
 		index++
+		maxTaskAtOnce <- struct{}{}
+
+		if index >= 5000 { //nolint:gomnd
+			time.Sleep(10 * time.Second) //nolint:gomnd
+
+			break
+		}
 	}
 }
 
