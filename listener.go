@@ -50,6 +50,7 @@ type Listener struct {
 	metricMessagesProcessed Incrementer
 	metricMessagesDropped   Incrementer
 	metricKafkaErrors       Incrementer
+	metricDurationProcess   Duration
 }
 
 // processError handles errors in processing messages.
@@ -81,12 +82,17 @@ func (listener *Listener) processError(ctx context.Context, message kafka.Messag
 // processMessageAndError processes the given message and handles any errors
 // that occur during processing, following a similar approach to processError.
 func (listener *Listener) processMessageAndError(ctx context.Context, message kafka.Message) error {
+	start := time.Now()
+
 	select {
 	case listener.messageChan <- message.Value:
 		// Process the message and handle any errors.
 		if err := listener.processError(ctx, message); err != nil {
 			return errors.Wrap(err, "err := listener.processError(ctx, message)")
 		}
+
+		duration := time.Since(start)
+		listener.metricDurationProcess.Observe(float64(duration.Milliseconds()))
 
 	case <-time.After(listener.processingTimeout):
 		// Attempt to empty the listener.lastMsg channel if there is a message.
@@ -300,6 +306,8 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 
 	shuttingDownCh := make(chan struct{}, 1)
 
+	recommitTicker := time.NewTicker(finalOpts.recommitInterval)
+
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
@@ -311,7 +319,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 		readerFactory: finalOpts.readerFactory,
 		reader:        finalOpts.readerFactory(),
 
-		recommitTicker:    time.NewTicker(finalOpts.recommitInterval),
+		recommitTicker:    recommitTicker,
 		reconnectInterval: finalOpts.reconnectInterval,
 		processingTimeout: finalOpts.processingTimeout,
 		processDroppedMsg: finalOpts.processDroppedMsg,
@@ -321,6 +329,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 
 		metricMessagesProcessed: finalOpts.metricMessagesProcessed,
 		metricMessagesDropped:   finalOpts.metricMessagesDropped,
-		metricKafkaErrors:       finalOpts.metricKafkaErrors,
+		metricKafkaErrors:       finalOpts.metricErrors,
+		metricDurationProcess:   finalOpts.metricDurationProcess,
 	}
 }

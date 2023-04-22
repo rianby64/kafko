@@ -17,6 +17,14 @@ type nopIncrementer struct{}
 
 func (n *nopIncrementer) Inc() {}
 
+type Duration interface {
+	Observe(float64)
+}
+
+type nopDuration struct{}
+
+func (n *nopDuration) Observe(float64) {}
+
 // defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
 func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 	// Log the dropped message with its content.
@@ -36,7 +44,8 @@ type OptionsListener struct {
 
 	metricMessagesProcessed Incrementer // Incrementer for the number of processed messages.
 	metricMessagesDropped   Incrementer // Incrementer for the number of dropped messages.
-	metricKafkaErrors       Incrementer // Incrementer for the number of Kafka errors.
+	metricErrors            Incrementer // Incrementer for the number of Kafka errors.
+	metricDurationProcess   Duration
 }
 
 // WithRecommitInterval sets the commit interval for the Options instance.
@@ -59,6 +68,12 @@ func (opts *OptionsListener) WithReconnectInterval(reconnectInterval time.Durati
 // Returns the updated Options instance for method chaining.
 func (opts *OptionsListener) WithProcessingTimeout(processingTimeout time.Duration) *OptionsListener {
 	opts.processingTimeout = processingTimeout
+
+	return opts
+}
+
+func (opts *OptionsListener) WithDurationProcess(metric Duration) *OptionsListener {
+	opts.metricDurationProcess = metric
 
 	return opts
 }
@@ -103,7 +118,7 @@ func (opts *OptionsListener) WithMetricMessagesDropped(metric Incrementer) *Opti
 // WithMetricKafkaErrors sets the Kafka errors incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
 func (opts *OptionsListener) WithMetricKafkaErrors(metric Incrementer) *OptionsListener {
-	opts.metricKafkaErrors = metric
+	opts.metricErrors = metric
 
 	return opts
 }
@@ -113,7 +128,7 @@ func NewOptionsListener() *OptionsListener {
 	return &OptionsListener{}
 }
 
-func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener {
+func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener { //nolint:cyclop
 	// Set the default options.
 	finalOpts := &OptionsListener{
 		recommitInterval:  commitInterval,
@@ -128,7 +143,8 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 
 		metricMessagesProcessed: new(nopIncrementer),
 		metricMessagesDropped:   new(nopIncrementer),
-		metricKafkaErrors:       new(nopIncrementer),
+		metricErrors:            new(nopIncrementer),
+		metricDurationProcess:   new(nopDuration),
 	}
 
 	// Iterate through the provided custom options and override defaults if needed.
@@ -161,8 +177,12 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 			finalOpts.metricMessagesDropped = opt.metricMessagesDropped
 		}
 
-		if opt.metricKafkaErrors != nil {
-			finalOpts.metricKafkaErrors = opt.metricKafkaErrors
+		if opt.metricErrors != nil {
+			finalOpts.metricErrors = opt.metricErrors
+		}
+
+		if opt.metricDurationProcess != nil {
+			finalOpts.metricDurationProcess = opt.metricDurationProcess
 		}
 	}
 
@@ -172,6 +192,10 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 type OptionsPublisher struct {
 	writerFactory     WriterFactory
 	processDroppedMsg ProcessDroppedMsgHandler
+
+	metricMessages Incrementer
+	metricErrors   Incrementer
+	metricDuration Duration
 }
 
 func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *OptionsPublisher {
@@ -194,6 +218,9 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 			return nil
 		},
 		processDroppedMsg: defaultProcessDroppedMsg,
+		metricMessages:    new(nopIncrementer),
+		metricErrors:      new(nopIncrementer),
+		metricDuration:    new(nopDuration),
 	}
 
 	for _, opt := range opts {

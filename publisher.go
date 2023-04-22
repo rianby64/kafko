@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
@@ -22,8 +23,8 @@ type Publisher struct {
 	writer      Writer
 	writerMutex sync.Locker
 
-	closed      bool        // Add a closed flag to the Publisher struct
-	closedMutex sync.Locker // Mutex to protect the closed flag
+	alreadyClosed bool          // Add a closed flag to the Publisher struct
+	closed        chan struct{} // Mutex to protect the closed flag
 
 	log  Logger
 	opts *OptionsPublisher
@@ -34,9 +35,12 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 
 	defer publisher.writerMutex.Unlock()
 
-	if publisher.writer == nil {
-		publisher.writer = publisher.opts.writerFactory()
-	}
+	start := time.Now()
+
+	defer func() {
+		duration := time.Since(start)
+		publisher.opts.metricDuration.Observe(float64(duration.Milliseconds()))
+	}()
 
 	message := kafka.Message{
 		Value: bytes,
@@ -47,7 +51,7 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 			publisher.log.Errorf(err, "err := queue.opts.processDroppedMsg(&message, queue.log)")
 		}
 
-		publisher.writer = nil
+		publisher.writer = publisher.opts.writerFactory()
 
 		return errors.Wrap(err, "queue.writer.WriteMessages(ctx, messages...)")
 	}
@@ -58,12 +62,15 @@ func (publisher *Publisher) writeSingleMessage(ctx context.Context, bytes []byte
 func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}) error {
 	var lastError error
 
-	publisher.closedMutex.Lock()
+	select {
+	case <-publisher.closed:
+		if publisher.alreadyClosed {
+			return errors.Wrap(ErrAlreadyClosed, "cannot Publish")
+		}
 
-	defer publisher.closedMutex.Unlock()
+		return nil
 
-	if publisher.closed {
-		return errors.Wrap(ErrAlreadyClosed, "cannot Publish")
+	default:
 	}
 
 	for _, payload := range payloads {
@@ -82,37 +89,35 @@ func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}
 
 // Shutdown method to perform a graceful shutdown.
 func (publisher *Publisher) Shutdown(ctx context.Context) error {
-	publisher.closedMutex.Lock()
-
-	defer publisher.closedMutex.Unlock()
-
-	if publisher.closed {
+	if publisher.alreadyClosed {
 		return errors.Wrap(ErrAlreadyClosed, "cannot Shutdown")
 	}
 
-	publisher.closed = true
+	publisher.alreadyClosed = true
 
-	if publisher.writer != nil {
-		// Use the provided context to allow for cancelation or timeout
-		ctx, cancel := context.WithCancel(ctx)
+	close(publisher.closed)
 
-		defer cancel()
+	publisher.writerMutex.Lock()
 
-		errChan := make(chan error, 1)
+	defer publisher.writerMutex.Unlock()
 
-		go func() {
-			errChan <- publisher.writer.Close()
-		}()
+	// Use the provided context to allow for cancelation or timeout
+	ctx, cancel := context.WithCancel(ctx)
 
-		select {
-		case err := <-errChan:
-			return err
-		case <-ctx.Done():
-			return errors.Wrap(ctx.Err(), "Publisher shutdown interrupted")
-		}
+	defer cancel()
+
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- publisher.writer.Close()
+	}()
+
+	select {
+	case err := <-errChan:
+		return err
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "Publisher shutdown interrupted")
 	}
-
-	return nil
 }
 
 func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
@@ -121,7 +126,7 @@ func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 	return &Publisher{
 		writerMutex: &sync.Mutex{},
 		writer:      finalOpts.writerFactory(),
-		closedMutex: &sync.Mutex{},
+		closed:      make(chan struct{}),
 		log:         log,
 		opts:        finalOpts,
 	}

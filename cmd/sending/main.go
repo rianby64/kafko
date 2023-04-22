@@ -53,7 +53,8 @@ func main() {
 		time.Sleep(sleepPublish)
 
 		payload := map[string]interface{}{
-			"id": index,
+			"id":     index,
+			"update": true,
 		}
 
 		if err := publisher.Publish(context.Background(), payload); err != nil {
