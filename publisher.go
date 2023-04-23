@@ -24,7 +24,10 @@ type Publisher struct {
 	writer         Writer
 	alreadyRewrote int32
 
-	writeErrs       *sync.WaitGroup
+	errorHandlingMutex *sync.Mutex
+	errorHandlingCond  *sync.Cond
+	errorHandling      int32
+
 	writeInProgress *sync.WaitGroup
 
 	alreadyClosed bool          // Add a closed flag to the Publisher struct
@@ -50,12 +53,11 @@ func (publisher *Publisher) writeMessages(ctx context.Context, bytes []byte) err
 		Value: bytes,
 	}
 
-	publisher.writeErrs.Wait()
-
 	if err := publisher.writer.WriteMessages(ctx, message); err != nil {
-		publisher.writeErrs.Add(1)
+		publisher.errorHandlingMutex.Lock()
+		atomic.StoreInt32(&publisher.errorHandling, 1)
 
-		defer publisher.writeErrs.Done()
+		defer publisher.errorHandlingMutex.Unlock()
 
 		publisher.opts.metricErrors.Inc()
 
@@ -66,6 +68,10 @@ func (publisher *Publisher) writeMessages(ctx context.Context, bytes []byte) err
 		if atomic.CompareAndSwapInt32(&publisher.alreadyRewrote, 0, 1) {
 			publisher.writer = publisher.opts.writerFactory()
 		}
+
+		// Signal that error handling is complete
+		atomic.StoreInt32(&publisher.errorHandling, 0)
+		publisher.errorHandlingCond.Broadcast()
 
 		return errors.Wrap(err, "queue.writer.WriteMessages(ctx, messages...)")
 	}
@@ -82,7 +88,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}
 	select {
 	case <-publisher.closed:
 		if publisher.alreadyClosed {
-			return errors.Wrap(ErrAlreadyClosed, "cannot Publish")
+			return errors.Wrapf(ErrAlreadyClosed, "(Publish) publisher.alreadyClosed: %t", publisher.alreadyClosed)
 		}
 
 		return nil
@@ -91,6 +97,12 @@ func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}
 	}
 
 	for _, payload := range payloads {
+		if atomic.LoadInt32(&publisher.errorHandling) == 1 {
+			publisher.errorHandlingMutex.Lock()
+			publisher.errorHandlingCond.Wait()
+			publisher.errorHandlingMutex.Unlock()
+		}
+
 		bytes, err := json.Marshal(payload)
 		if err != nil {
 			return errors.Wrap(err, "bytes, err := json.Marshal(payload)")
@@ -107,7 +119,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payloads ...interface{}
 // Shutdown method to perform a graceful shutdown.
 func (publisher *Publisher) Shutdown(ctx context.Context) error {
 	if publisher.alreadyClosed {
-		return errors.Wrap(ErrAlreadyClosed, "cannot Shutdown")
+		return errors.Wrapf(ErrAlreadyClosed, "(Shutdown) publisher.alreadyClosed: %t", publisher.alreadyClosed)
 	}
 
 	publisher.alreadyClosed = true
@@ -131,19 +143,22 @@ func (publisher *Publisher) Shutdown(ctx context.Context) error {
 	case err := <-errChan:
 		return err
 	case <-ctx.Done():
-		return errors.Wrap(ctx.Err(), "Publisher shutdown interrupted")
+		return errors.Wrap(ctx.Err(), "(Shutdown) <-ctx.Done()")
 	}
 }
 
 func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 	finalOpts := obtainFinalOptionsPublisher(log, opts...)
+	errorHandlingMutex := &sync.Mutex{}
 
 	return &Publisher{
-		writeErrs:       &sync.WaitGroup{},
 		writeInProgress: &sync.WaitGroup{},
 		writer:          finalOpts.writerFactory(),
 		closed:          make(chan struct{}),
 		log:             log,
 		opts:            finalOpts,
+
+		errorHandlingMutex: errorHandlingMutex,
+		errorHandlingCond:  sync.NewCond(errorHandlingMutex),
 	}
 }
