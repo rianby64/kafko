@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
 	"time"
 
 	"github.com/caarlos0/env"
@@ -13,7 +15,7 @@ import (
 
 const (
 	batchBytes   = 2 << 21
-	batchSize    = 100
+	batchSize    = 50
 	batchTimeout = time.Second * 3
 )
 
@@ -23,6 +25,19 @@ type Config struct {
 	KafkaPass    string   `env:"KAFKA_PASS,required"`
 	KafkaTopic   string   `env:"KAFKA_TOPIC,required"`
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
+}
+
+func generateRandomBytes(n int) []byte {
+	bytes := make([]byte, n)
+	_, err := rand.Read(bytes)
+
+	if err != nil {
+		fmt.Println(err) //nolint:forbidigo
+
+		return nil
+	}
+
+	return bytes
 }
 
 func main() {
@@ -69,12 +84,13 @@ func main() {
 		}(map[string]interface{}{
 			"id":     index,
 			"update": true,
+			"random": generateRandomBytes(15000), //nolint
 		}, index)
 
 		index++
 		maxTaskAtOnce <- struct{}{}
 
-		if index >= 5000 { //nolint:gomnd
+		if index >= 5000000 { //nolint:gomnd
 			time.Sleep(10 * time.Second) //nolint:gomnd
 
 			break

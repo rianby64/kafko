@@ -1,29 +1,47 @@
 version: '3'
+
+volumes:
+  zoologs-1:
+  zoodata-1:
+  zoologs-2:
+  zoodata-2:
+  kafkadata-1:
+  kafkadata-2:
+  kafkadata-3:
+  kafkadata-4:
+
 services:
   zookeeper-1:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.3.3
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - 22181:2181
+    volumes:
+      - zoologs-1:/var/lib/zookeeper/log
+      - zoodata-1:/var/lib/zookeeper/data
 
   zookeeper-2:
-    image: confluentinc/cp-zookeeper:7.3.0
+    image: confluentinc/cp-zookeeper:7.3.3
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - 32181:2181
+    volumes:
+      - zoologs-2:/var/lib/zookeeper/log
+      - zoodata-2:/var/lib/zookeeper/data
 
   kafka-1:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.3.3
     depends_on:
       - zookeeper-1
       - zookeeper-2
-
     ports:
       - 29092:29092
+    volumes:
+      - kafkadata-1:/var/lib/kafka/data
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
@@ -34,12 +52,14 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-2:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.3.3
     depends_on:
       - zookeeper-1
       - zookeeper-2
     ports:
       - 39092:39092
+    volumes:
+      - kafkadata-2:/var/lib/kafka/data
     environment:
       KAFKA_BROKER_ID: 2
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
@@ -50,12 +70,14 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-3:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.3.3
     depends_on:
       - zookeeper-1
       - zookeeper-2
     ports:
       - 49092:49092
+    volumes:
+      - kafkadata-3:/var/lib/kafka/data
     environment:
       KAFKA_BROKER_ID: 3
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
@@ -66,12 +88,14 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-4:
-    image: confluentinc/cp-kafka:7.3.0
+    image: confluentinc/cp-kafka:7.3.3
     depends_on:
       - zookeeper-1
       - zookeeper-2
     ports:
       - 59092:59092
+    volumes:
+      - kafkadata-4:/var/lib/kafka/data
     environment:
       KAFKA_BROKER_ID: 4
       KAFKA_ZOOKEEPER_CONNECT: zookeeper-1:2181,zookeeper-2:2181
