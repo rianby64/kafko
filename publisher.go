@@ -66,6 +66,10 @@ func (publisher *Publisher) writeMessages(ctx context.Context, bytes []byte) err
 		}
 
 		if atomic.CompareAndSwapInt32(&publisher.alreadyRewrote, 0, 1) {
+			if err := publisher.writer.Close(); err != nil {
+				publisher.log.Errorf(err, "err := publisher.writer.Close()")
+			}
+
 			publisher.writer = publisher.opts.writerFactory()
 		}
 

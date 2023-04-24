@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
@@ -22,12 +24,10 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-func handleMessage(log log.Logger, consumer *kafko.Listener) {
-	msg, errChan := consumer.MessageAndErrorChannels()
-
-	log.Printf("Received message: %s", string(<-msg))
-
-	errChan <- nil
+type MessageFromKafka struct {
+	ID     int    `json:"id"`
+	Update bool   `json:"update"`
+	Random []byte `json:"random"`
 }
 
 func main() {
@@ -40,7 +40,6 @@ func main() {
 			Topic:       cfg.KafkaTopic,
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
-			Logger:      log,
 			ErrorLogger: log,
 			MaxBytes:    maxBytes,
 		})
@@ -57,8 +56,21 @@ func main() {
 		}
 	}()
 
-	for {
-		handleMessage(log, consumer)
+	totalTasks := 0
+	msgChan, errChan := consumer.MessageAndErrorChannels()
+
+	for msg := range msgChan {
+		var msgFromKafka *MessageFromKafka
+
+		if err := json.Unmarshal(msg, &msgFromKafka); err != nil {
+			errChan <- err
+		}
+
+		totalTasks += msgFromKafka.ID
+
+		fmt.Printf("\rtask: %d\r", totalTasks)
+
+		errChan <- nil
 	}
 }
 

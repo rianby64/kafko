@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/caarlos0/env"
@@ -15,7 +16,7 @@ import (
 
 const (
 	batchBytes   = 2 << 21
-	batchSize    = 50
+	batchSize    = 9
 	batchTimeout = time.Second * 3
 )
 
@@ -40,7 +41,7 @@ func generateRandomBytes(n int) []byte {
 	return bytes
 }
 
-func main() {
+func main() { //nolint:funlen
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
@@ -60,38 +61,66 @@ func main() {
 		writer.AllowAutoTopicCreation = true
 
 		return writer
+	}).WithProcessDroppedMsg(func(_ *kafka.Message, log kafko.Logger) error {
+		return nil
 	})
 
 	publisher := kafko.NewPublisher(log, opts)
+	totalTasksChan := make(chan int)
+	totalTasks := 0
 
 	index := 0
 
 	maxTaskAtOnce := make(chan struct{}, 400) //nolint:gomnd
+	runningTasks := &sync.WaitGroup{}
+
+	go func() {
+		for v := range totalTasksChan {
+			totalTasks += v
+
+			runningTasks.Done()
+		}
+	}()
 
 	for {
-		go func(payload map[string]interface{}, index int) {
+		runningTasks.Add(2) //nolint:gomnd
+
+		go func(payload interface{}) {
 			defer func() {
+				totalTasksChan <- 1
+
 				<-maxTaskAtOnce
+
+				runningTasks.Done()
 			}()
 
-			start := time.Now()
+			for {
+				if err := publisher.Publish(context.Background(), payload); err != nil {
+					log.Errorf(err, "cannot publish")
+					time.Sleep(time.Second)
 
-			if err := publisher.Publish(context.Background(), payload); err != nil {
-				log.Errorf(err, "err := publisher.Publish(context.Background(), payload)")
+					continue
+				}
+
+				break
 			}
-
-			log.Printf("sent... %d (%v)", index, time.Since(start))
-		}(map[string]interface{}{
-			"id":     index,
-			"update": true,
-			"random": generateRandomBytes(15000), //nolint
-		}, index)
+		}(
+			map[string]interface{}{
+				"id":     1,
+				"update": true,
+				"random": generateRandomBytes(10000), //nolint
+			},
+		)
 
 		index++
 		maxTaskAtOnce <- struct{}{}
 
-		if index >= 5000000 { //nolint:gomnd
-			time.Sleep(10 * time.Second) //nolint:gomnd
+		if index >= 250000 { //nolint:gomnd
+			runningTasks.Wait()
+
+			close(totalTasksChan)
+
+			log.Printf("total tasks: %d", totalTasks)
 
 			break
 		}

@@ -26,7 +26,7 @@ type Reader interface {
 var (
 	ErrMessageDropped     = errors.New("message dropped")
 	ErrResourceIsNil      = errors.New("resource is nil")
-	ErrExitProcessingLoop = errors.New("listener: exit processing loop")
+	errExitProcessingLoop = errors.New("listener: exit processing loop")
 )
 
 type Listener struct {
@@ -174,7 +174,7 @@ func (listener *Listener) handleKafkaError(ctx context.Context, err error) error
 
 			// If the shutdown has started, exit the loop.
 			case <-listener.shuttingDownCh:
-				return ErrExitProcessingLoop
+				return errExitProcessingLoop
 			}
 
 			// Return no error since it's a recoverable error

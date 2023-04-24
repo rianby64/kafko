@@ -41,7 +41,7 @@ func (listener *Listener) Listen(ctx context.Context) error { //nolint:cyclop
 
 		err := listener.processTick(ctx)
 
-		if errors.Is(err, ErrExitProcessingLoop) {
+		if errors.Is(err, errExitProcessingLoop) {
 			return nil
 		}
 
