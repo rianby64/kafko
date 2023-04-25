@@ -115,7 +115,7 @@ func main() { //nolint:funlen
 		index++
 		maxTaskAtOnce <- struct{}{}
 
-		if index >= 250000 { //nolint:gomnd
+		if index >= 1 {
 			runningTasks.Wait()
 
 			close(totalTasksChan)

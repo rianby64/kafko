@@ -265,12 +265,11 @@ func (listener *Listener) reconnectToKafka() {
 }
 
 func (listener *Listener) processTick(ctx context.Context) error {
+	message, err := listener.reader.FetchMessage(ctx)
+
 	listener.processing.Add(1)
 
 	defer listener.processing.Done()
-
-	// Fetch a message from the Kafka topic.
-	message, err := listener.reader.FetchMessage(ctx)
 
 	// If there's an error, handle the message error and continue to the next iteration.
 	if err != nil {

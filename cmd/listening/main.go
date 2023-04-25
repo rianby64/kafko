@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
@@ -33,6 +36,9 @@ type MessageFromKafka struct {
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
+	shutdown := make(chan os.Signal, 1)
+
+	signal.Notify(shutdown, syscall.SIGTERM, syscall.SIGINT)
 
 	opts := kafko.NewOptionsListener().WithReaderFactory(func() kafko.Reader {
 		return kafka.NewReader(kafka.ReaderConfig{
@@ -41,6 +47,7 @@ func main() {
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			ErrorLogger: log,
+			Logger:      log,
 			MaxBytes:    maxBytes,
 		})
 	})
@@ -53,6 +60,18 @@ func main() {
 
 		if err := consumer.Listen(ctx); err != nil {
 			log.Panicf(err, "err := consumer.Listen(context.Background())")
+		}
+	}()
+
+	go func() {
+		<-shutdown
+
+		defer close(shutdown)
+
+		log.Printf("shutting down")
+
+		if err := consumer.Shutdown(context.Background()); err != nil {
+			log.Errorf(err, "err := consumer.Shutdown(context.Background())")
 		}
 	}()
 
@@ -72,6 +91,10 @@ func main() {
 
 		errChan <- nil
 	}
+
+	<-shutdown
+
+	log.Printf("bye")
 }
 
 func loadConfig(log log.Logger) Config {
