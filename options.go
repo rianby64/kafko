@@ -36,7 +36,7 @@ func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 
 // OptionsListener is a configuration struct for a Kafka consumer.
 type OptionsListener struct {
-	recommitInterval  time.Duration            // Time interval between attempts to commit uncommitted messages.
+	recommitTicker    *time.Ticker             // Time interval between attempts to commit uncommitted messages.
 	reconnectInterval time.Duration            // Time interval between reconnect attempts.
 	processingTimeout time.Duration            // Maximum allowed time for processing a message.
 	processDroppedMsg ProcessDroppedMsgHandler // Handler function to process dropped messages.
@@ -51,7 +51,7 @@ type OptionsListener struct {
 // WithRecommitInterval sets the commit interval for the Options instance.
 // Returns the updated Options instance for method chaining.
 func (opts *OptionsListener) WithRecommitInterval(recommitInterval time.Duration) *OptionsListener {
-	opts.recommitInterval = recommitInterval
+	opts.recommitTicker = time.NewTicker(recommitInterval)
 
 	return opts
 }
@@ -131,7 +131,7 @@ func NewOptionsListener() *OptionsListener {
 func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener { //nolint:cyclop
 	// Set the default options.
 	finalOpts := &OptionsListener{
-		recommitInterval:  commitInterval,
+		recommitTicker:    time.NewTicker(commitInterval),
 		processDroppedMsg: defaultProcessDroppedMsg,
 		processingTimeout: processingTimeout,
 		reconnectInterval: reconnectInterval,
@@ -157,8 +157,8 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 			finalOpts.reconnectInterval = opt.reconnectInterval
 		}
 
-		if opt.recommitInterval != 0 {
-			finalOpts.recommitInterval = opt.recommitInterval
+		if opt.recommitTicker != nil {
+			finalOpts.recommitTicker = opt.recommitTicker
 		}
 
 		if opt.processDroppedMsg != nil {

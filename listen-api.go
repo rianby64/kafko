@@ -78,7 +78,7 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 
 	// Close the Kafka reader.
 	if err := listener.reader.Close(); err != nil {
-		go listener.metricKafkaErrors.Inc()
+		go listener.opts.metricErrors.Inc()
 
 		return errors.Wrap(err, "queue.reader.Close()")
 	}

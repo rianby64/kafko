@@ -36,22 +36,14 @@ type Listener struct {
 
 	log Logger
 
-	recommitTicker    *time.Ticker
-	processingTimeout time.Duration
-	reconnectInterval time.Duration
-	processDroppedMsg ProcessDroppedMsgHandler
-	processing        sync.Locker
+	opts *OptionsListener
 
-	readerFactory ReaderFactory
-	reader        Reader
+	processing sync.Locker
+
+	reader Reader
 
 	uncommittedMsgs      []kafka.Message
 	uncommittedMsgsMutex sync.Locker
-
-	metricMessagesProcessed Incrementer
-	metricMessagesDropped   Incrementer
-	metricKafkaErrors       Incrementer
-	metricDurationProcess   Duration
 }
 
 // processError handles errors in processing messages.
@@ -70,9 +62,9 @@ func (listener *Listener) processError(ctx context.Context, message kafka.Messag
 			return errors.Wrap(err, "err := queue.doCommitMessage(ctx, message)")
 		}
 
-	case <-time.After(listener.processingTimeout):
+	case <-time.After(listener.opts.processingTimeout):
 		// If processing times out, attempt to process the dropped message.
-		if err := listener.processDroppedMsg(&message, listener.log); err != nil {
+		if err := listener.opts.processDroppedMsg(&message, listener.log); err != nil {
 			listener.log.Errorf(err, "Failed to process message")
 		}
 	}
@@ -93,9 +85,9 @@ func (listener *Listener) processMessageAndError(ctx context.Context, message ka
 		}
 
 		duration := time.Since(start)
-		listener.metricDurationProcess.Observe(float64(duration.Milliseconds()))
+		listener.opts.metricDurationProcess.Observe(float64(duration.Milliseconds()))
 
-	case <-time.After(listener.processingTimeout):
+	case <-time.After(listener.opts.processingTimeout):
 		// Attempt to empty the listener.lastMsg channel if there is a message.
 		select {
 		case _, closed := <-listener.messageChan:
@@ -106,10 +98,10 @@ func (listener *Listener) processMessageAndError(ctx context.Context, message ka
 		default:
 		}
 
-		go listener.metricMessagesDropped.Inc()
+		go listener.opts.metricMessagesDropped.Inc()
 
 		// If processing times out, attempt to process the dropped message.
-		if err := listener.processDroppedMsg(&message, listener.log); err != nil {
+		if err := listener.opts.processDroppedMsg(&message, listener.log); err != nil {
 			listener.log.Errorf(err, "Failed to process message")
 		}
 	}
@@ -163,7 +155,7 @@ func (listener *Listener) handleKafkaError(ctx context.Context, err error) error
 
 			select {
 			// Let's reconnect after queue.reconnectInterval.
-			case <-time.After(listener.reconnectInterval):
+			case <-time.After(listener.opts.reconnectInterval):
 				listener.reconnectToKafka()
 
 			// If ctx.Done and reconnect hasn't started yet, then it's secure to exit.
@@ -196,12 +188,12 @@ func (listener *Listener) commitUncommittedMessages(ctx context.Context) error {
 	// If there are uncommitted messages, attempt to commit them.
 	if len(listener.uncommittedMsgs) > 0 {
 		if err := listener.reader.CommitMessages(ctx, listener.uncommittedMsgs...); err != nil {
-			go listener.metricKafkaErrors.Inc()
+			go listener.opts.metricErrors.Inc()
 
 			return errors.Wrapf(err, "err := queue.reader.CommitMessages(ctx, queue.uncommittedMsgs...) (queue.uncommittedMsgs = %v)", listener.uncommittedMsgs)
 		}
 
-		go listener.metricMessagesProcessed.Inc()
+		go listener.opts.metricMessagesProcessed.Inc()
 
 		// Reset the uncommitted messages slice.
 		listener.uncommittedMsgs = nil
@@ -223,7 +215,7 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 	// Add the defer function to handle stopping the ticker and committing uncommitted messages
 	// in case the method returns due to a panic or other unexpected situations.
 	defer func() {
-		listener.recommitTicker.Stop()
+		listener.opts.recommitTicker.Stop()
 
 		if err := listener.commitUncommittedMessages(ctx); err != nil {
 			listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
@@ -232,7 +224,7 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 
 	for {
 		select {
-		case <-listener.recommitTicker.C:
+		case <-listener.opts.recommitTicker.C:
 			// When the ticker ticks, commit uncommitted messages.
 			if err := listener.commitUncommittedMessages(ctx); err != nil {
 				listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
@@ -254,13 +246,13 @@ func (listener *Listener) runCommitLoop(ctx context.Context) {
 func (listener *Listener) reconnectToKafka() {
 	// Close the existing reader in order to avoid resource leaks
 	if err := listener.reader.Close(); err != nil {
-		go listener.metricKafkaErrors.Inc()
+		go listener.opts.metricErrors.Inc()
 
 		listener.log.Errorf(err, "err := listener.reader.Close()")
 	}
 
 	// Create a new Reader from the readerFactory.
-	reader := listener.readerFactory()
+	reader := listener.opts.readerFactory()
 	listener.reader = reader
 }
 
@@ -269,11 +261,17 @@ func (listener *Listener) processTick(ctx context.Context) error {
 
 	defer listener.processing.Unlock()
 
+	select {
+	case <-listener.shuttingDownCh:
+		return errExitProcessingLoop
+	default:
+	}
+
 	message, err := listener.reader.FetchMessage(ctx)
 
 	// If there's an error, handle the message error and continue to the next iteration.
 	if err != nil {
-		go listener.metricKafkaErrors.Inc()
+		go listener.opts.metricErrors.Inc()
 
 		if err := listener.handleKafkaError(ctx, err); err != nil {
 			return errors.Wrap(err, "err := listener.handleKafkaError(ctx, err)")
@@ -309,8 +307,6 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 
 	shuttingDownCh := make(chan struct{}, 1)
 
-	recommitTicker := time.NewTicker(finalOpts.recommitInterval)
-
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
@@ -318,22 +314,13 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 		errorChan:      errorChan,
 		shuttingDownCh: shuttingDownCh,
 
-		log:           log,
-		readerFactory: finalOpts.readerFactory,
-		reader:        finalOpts.readerFactory(),
-
-		recommitTicker:    recommitTicker,
-		reconnectInterval: finalOpts.reconnectInterval,
-		processingTimeout: finalOpts.processingTimeout,
-		processDroppedMsg: finalOpts.processDroppedMsg,
-		processing:        &sync.Mutex{},
-
+		processing:           &sync.Mutex{},
 		uncommittedMsgsMutex: &sync.Mutex{},
 		uncommittedMsgs:      make([]kafka.Message, 0),
 
-		metricMessagesProcessed: finalOpts.metricMessagesProcessed,
-		metricMessagesDropped:   finalOpts.metricMessagesDropped,
-		metricKafkaErrors:       finalOpts.metricErrors,
-		metricDurationProcess:   finalOpts.metricDurationProcess,
+		log:  log,
+		opts: finalOpts,
+
+		reader: finalOpts.readerFactory(),
 	}
 }
