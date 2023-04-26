@@ -66,13 +66,15 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 		close(listener.messageChan)
 	}()
 
+	listener.processing.Lock()
+
+	defer listener.processing.Unlock()
+
 	// Commit any uncommitted messages. It's OK to not to process them further as
 	// logs will provide the missing content while trying to commit before shutting down.
 	if err := listener.commitUncommittedMessages(ctx); err != nil {
 		listener.log.Errorf(err, "err := queue.commitUncommittedMessages(ctx)")
 	}
-
-	listener.processing.Wait()
 
 	// Close the Kafka reader.
 	if err := listener.reader.Close(); err != nil {

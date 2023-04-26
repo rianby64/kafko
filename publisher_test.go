@@ -140,6 +140,7 @@ func TestPublisher(t *testing.T) { //nolint:funlen
 
 		errMockWriteMessages := errors.New("mock WriteMessages error")
 		mockWriter.On("WriteMessages", ctx, expectedMessages).Return(errMockWriteMessages)
+		mockWriter.On("Close").Return(nil)
 
 		err := publisher.Publish(ctx, payload)
 

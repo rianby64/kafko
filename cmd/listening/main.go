@@ -33,7 +33,7 @@ type MessageFromKafka struct {
 	Random []byte `json:"random"`
 }
 
-func main() {
+func main() { //nolint:funlen
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 	shutdown := make(chan os.Signal, 1)
@@ -87,7 +87,7 @@ func main() {
 
 		totalTasks += msgFromKafka.ID
 
-		fmt.Printf("\rtask: %d\r", totalTasks)
+		fmt.Printf("\rtask: %d\r", totalTasks) //nolint:forbidigo
 
 		errChan <- nil
 	}

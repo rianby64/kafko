@@ -40,7 +40,7 @@ type Listener struct {
 	processingTimeout time.Duration
 	reconnectInterval time.Duration
 	processDroppedMsg ProcessDroppedMsgHandler
-	processing        *sync.WaitGroup
+	processing        sync.Locker
 
 	readerFactory ReaderFactory
 	reader        Reader
@@ -265,11 +265,11 @@ func (listener *Listener) reconnectToKafka() {
 }
 
 func (listener *Listener) processTick(ctx context.Context) error {
+	listener.processing.Lock()
+
+	defer listener.processing.Unlock()
+
 	message, err := listener.reader.FetchMessage(ctx)
-
-	listener.processing.Add(1)
-
-	defer listener.processing.Done()
 
 	// If there's an error, handle the message error and continue to the next iteration.
 	if err != nil {
@@ -326,7 +326,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 		reconnectInterval: finalOpts.reconnectInterval,
 		processingTimeout: finalOpts.processingTimeout,
 		processDroppedMsg: finalOpts.processDroppedMsg,
-		processing:        &sync.WaitGroup{},
+		processing:        &sync.Mutex{},
 
 		uncommittedMsgsMutex: &sync.Mutex{},
 		uncommittedMsgs:      make([]kafka.Message, 0),
