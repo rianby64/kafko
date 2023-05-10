@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -27,13 +26,7 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-type MessageFromKafka struct {
-	ID     int    `json:"id"`
-	Update bool   `json:"update"`
-	Random []byte `json:"random"`
-}
-
-func main() { //nolint:funlen
+func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 	shutdown := make(chan os.Signal, 1)
@@ -47,8 +40,8 @@ func main() { //nolint:funlen
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			ErrorLogger: log,
-			Logger:      log,
-			MaxBytes:    maxBytes,
+			//Logger:   log,
+			MaxBytes: maxBytes,
 		})
 	})
 
@@ -75,19 +68,10 @@ func main() { //nolint:funlen
 		}
 	}()
 
-	totalTasks := 0
 	msgChan, errChan := consumer.MessageAndErrorChannels()
 
 	for msg := range msgChan {
-		var msgFromKafka *MessageFromKafka
-
-		if err := json.Unmarshal(msg, &msgFromKafka); err != nil {
-			errChan <- err
-		}
-
-		totalTasks += msgFromKafka.ID
-
-		fmt.Printf("\rtask: %d\r", totalTasks) //nolint:forbidigo
+		fmt.Printf("msg: %s", string(msg)) //nolint:forbidigo
 
 		errChan <- nil
 	}

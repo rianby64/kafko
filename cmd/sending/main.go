@@ -16,7 +16,7 @@ import (
 
 const (
 	batchBytes   = 2 << 21
-	batchSize    = 9
+	batchSize    = 10
 	batchTimeout = time.Second * 3
 )
 
@@ -115,7 +115,7 @@ func main() { //nolint:funlen
 		index++
 		maxTaskAtOnce <- struct{}{}
 
-		if index >= 1 {
+		if index >= 1000000 {
 			runningTasks.Wait()
 
 			close(totalTasksChan)
