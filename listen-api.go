@@ -8,7 +8,14 @@ import (
 
 // Listen starts the Listener to fetch and process messages from the Kafka topic.
 // It also starts the commit loop and handles message errors.
-func (listener *Listener) Listen(ctx context.Context) error { //nolint:cyclop
+func (listener *Listener) Listen(ctxIn context.Context) error { //nolint:cyclop
+	ctx, cancel := context.WithCancel(ctxIn)
+
+	go func() {
+		<-listener.shuttingDownCh
+		cancel()
+	}()
+
 	// Start the commit loop in a separate goroutine.
 	go listener.runCommitLoop(ctx)
 
