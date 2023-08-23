@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,12 +13,8 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-const (
-	maxBytes = 2 << 21
-)
-
 type Config struct {
-	Name         string   `env:"NAME" envDefault:"name"`
+	KafkaGroupID string   `env:"KAFKA_GROUP"`
 	KafkaUser    string   `env:"KAFKA_USER"`
 	KafkaPass    string   `env:"KAFKA_PASS"`
 	KafkaTopic   string   `env:"KAFKA_TOPIC,required"`
@@ -35,13 +30,12 @@ func main() {
 
 	opts := kafko.NewOptionsListener().WithReaderFactory(func() kafko.Reader {
 		return kafka.NewReader(kafka.ReaderConfig{
-			GroupID:     cfg.Name,
+			GroupID:     cfg.KafkaGroupID,
 			Topic:       cfg.KafkaTopic,
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			ErrorLogger: log,
-			//Logger:   log,
-			MaxBytes: maxBytes,
+			Logger:      log,
 		})
 	})
 
@@ -71,9 +65,9 @@ func main() {
 	msgChan, errChan := consumer.MessageAndErrorChannels()
 
 	for msg := range msgChan {
-		fmt.Printf("msg: %s", string(msg)) //nolint:forbidigo
-
 		errChan <- nil
+
+		log.Printf("MSG OK (%s)", string(msg))
 	}
 
 	<-shutdown

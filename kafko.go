@@ -19,6 +19,7 @@ func NewDialer(username, password string) *kafka.Dialer {
 	dialer := &kafka.Dialer{
 		Timeout:   dialerTimeout,
 		DualStack: true,
+		KeepAlive: time.Minute,
 	}
 
 	if username != "" && password != "" {

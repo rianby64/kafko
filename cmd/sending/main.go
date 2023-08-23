@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"fmt"
-	"sync"
+	"encoding/json"
 	"time"
 
 	"github.com/caarlos0/env"
@@ -16,8 +14,8 @@ import (
 
 const (
 	batchBytes   = 2 << 21
-	batchSize    = 10
-	batchTimeout = time.Second * 3
+	batchSize    = 100
+	batchTimeout = time.Second * 5
 )
 
 type Config struct {
@@ -28,35 +26,35 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-func generateRandomBytes(n int) []byte {
-	bytes := make([]byte, n)
-	_, err := rand.Read(bytes)
-
-	if err != nil {
-		fmt.Println(err) //nolint:forbidigo
-
-		return nil
+func publishIndex(publisher *kafko.Publisher, index int, log *log.LoggerInternal) {
+	payload := map[string]interface{}{
+		"id": index,
 	}
 
-	return bytes
+	msg, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+
+	if err := publisher.Publish(context.Background(), msg); err != nil {
+		log.Errorf(err, "cannot publish")
+	}
 }
 
-func main() { //nolint:funlen
+func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
 	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
-		writer := kafka.NewWriter(kafka.WriterConfig{
-			Brokers:          cfg.KafkaBrokers,
-			Topic:            cfg.KafkaTopic,
-			Dialer:           kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
-			CompressionCodec: kafka.Zstd.Codec(),
-			ErrorLogger:      log,
-			Logger:           log,
-			BatchBytes:       batchBytes,
-			BatchSize:        batchSize,
-			BatchTimeout:     batchTimeout,
-		})
+		writer := &kafka.Writer{
+			Addr:        kafka.TCP(cfg.KafkaBrokers...),
+			Topic:       cfg.KafkaTopic,
+			ErrorLogger: log,
+			// Logger:       log,
+			BatchBytes:   batchBytes,
+			BatchSize:    batchSize,
+			BatchTimeout: batchTimeout,
+		}
 
 		writer.AllowAutoTopicCreation = true
 
@@ -66,64 +64,18 @@ func main() { //nolint:funlen
 	})
 
 	publisher := kafko.NewPublisher(log, opts)
-	totalTasksChan := make(chan int)
-	totalTasks := 0
 
-	index := 0
+	tasksAtOnce := make(chan struct{}, 500)
 
-	maxTaskAtOnce := make(chan struct{}, 400) //nolint:gomnd
-	runningTasks := &sync.WaitGroup{}
-
-	go func() {
-		for v := range totalTasksChan {
-			totalTasks += v
-
-			runningTasks.Done()
-		}
-	}()
-
-	for {
-		runningTasks.Add(2) //nolint:gomnd
-
-		go func(payload interface{}) {
+	for index := 0; index < 10000000; index++ {
+		go func(index int) {
 			defer func() {
-				totalTasksChan <- 1
-
-				<-maxTaskAtOnce
-
-				runningTasks.Done()
+				<-tasksAtOnce
 			}()
+			publishIndex(publisher, index, log)
+		}(index)
 
-			for {
-				if err := publisher.Publish(context.Background(), payload); err != nil {
-					log.Errorf(err, "cannot publish")
-					time.Sleep(time.Second)
-
-					continue
-				}
-
-				break
-			}
-		}(
-			map[string]interface{}{
-				"id":     1,
-				"update": true,
-				"random": generateRandomBytes(10000), //nolint
-			},
-		)
-
-		index++
-		maxTaskAtOnce <- struct{}{}
-
-		if index >= 1000000 {
-			runningTasks.Wait()
-
-			close(totalTasksChan)
-
-			log.Printf("total tasks: %d", totalTasks)
-
-			break
-		}
+		tasksAtOnce <- struct{}{}
 	}
 }
 

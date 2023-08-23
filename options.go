@@ -1,8 +1,6 @@
 package kafko
 
 import (
-	"time"
-
 	"github.com/segmentio/kafka-go"
 )
 
@@ -36,9 +34,6 @@ func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 
 // OptionsListener is a configuration struct for a Kafka consumer.
 type OptionsListener struct {
-	recommitTicker    *time.Ticker             // Time interval between attempts to commit uncommitted messages.
-	reconnectInterval time.Duration            // Time interval between reconnect attempts.
-	processingTimeout time.Duration            // Maximum allowed time for processing a message.
 	processDroppedMsg ProcessDroppedMsgHandler // Handler function to process dropped messages.
 	readerFactory     ReaderFactory            // Factory function to create Reader instances.
 
@@ -46,30 +41,6 @@ type OptionsListener struct {
 	metricMessagesDropped   Incrementer // Incrementer for the number of dropped messages.
 	metricErrors            Incrementer // Incrementer for the number of Kafka errors.
 	metricDurationProcess   Duration
-}
-
-// WithRecommitInterval sets the commit interval for the Options instance.
-// Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithRecommitInterval(recommitInterval time.Duration) *OptionsListener {
-	opts.recommitTicker = time.NewTicker(recommitInterval)
-
-	return opts
-}
-
-// WithReconnectInterval sets the reconnect interval for the Options instance.
-// Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithReconnectInterval(reconnectInterval time.Duration) *OptionsListener {
-	opts.reconnectInterval = reconnectInterval
-
-	return opts
-}
-
-// WithProcessingTimeout sets the processing timeout for the Options instance.
-// Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithProcessingTimeout(processingTimeout time.Duration) *OptionsListener {
-	opts.processingTimeout = processingTimeout
-
-	return opts
 }
 
 func (opts *OptionsListener) WithDurationProcess(metric Duration) *OptionsListener {
@@ -128,13 +99,10 @@ func NewOptionsListener() *OptionsListener {
 	return &OptionsListener{}
 }
 
-func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener { //nolint:cyclop
+func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener {
 	// Set the default options.
 	finalOpts := &OptionsListener{
-		recommitTicker:    time.NewTicker(commitInterval),
 		processDroppedMsg: defaultProcessDroppedMsg,
-		processingTimeout: processingTimeout,
-		reconnectInterval: reconnectInterval,
 		readerFactory: func() Reader {
 			log.Panicf(ErrResourceIsNil, "provide the reader")
 
@@ -149,18 +117,6 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 
 	// Iterate through the provided custom options and override defaults if needed.
 	for _, opt := range opts {
-		if opt.processingTimeout != 0 {
-			finalOpts.processingTimeout = opt.processingTimeout
-		}
-
-		if opt.reconnectInterval != 0 {
-			finalOpts.reconnectInterval = opt.reconnectInterval
-		}
-
-		if opt.recommitTicker != nil {
-			finalOpts.recommitTicker = opt.recommitTicker
-		}
-
 		if opt.processDroppedMsg != nil {
 			finalOpts.processDroppedMsg = opt.processDroppedMsg
 		}

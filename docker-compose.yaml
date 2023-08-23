@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 volumes:
   zoologs-1:
@@ -12,7 +12,7 @@ volumes:
 
 services:
   zookeeper-1:
-    image: confluentinc/cp-zookeeper:7.3.3
+    image: confluentinc/cp-zookeeper:latest
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -23,7 +23,7 @@ services:
       - zoodata-1:/var/lib/zookeeper/data
 
   zookeeper-2:
-    image: confluentinc/cp-zookeeper:7.3.3
+    image: confluentinc/cp-zookeeper:latest
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -34,7 +34,7 @@ services:
       - zoodata-2:/var/lib/zookeeper/data
 
   kafka-1:
-    image: confluentinc/cp-kafka:7.3.3
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper-1
       - zookeeper-2
@@ -52,7 +52,7 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-2:
-    image: confluentinc/cp-kafka:7.3.3
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper-1
       - zookeeper-2
@@ -70,7 +70,7 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-3:
-    image: confluentinc/cp-kafka:7.3.3
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper-1
       - zookeeper-2
@@ -88,7 +88,7 @@ services:
       KAFKA_NUM_PARTITIONS: 4
 
   kafka-4:
-    image: confluentinc/cp-kafka:7.3.3
+    image: confluentinc/cp-kafka:latest
     depends_on:
       - zookeeper-1
       - zookeeper-2
