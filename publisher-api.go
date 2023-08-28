@@ -3,14 +3,14 @@ package kafko
 import (
 	"context"
 
-	"github.com/google/uuid"
 	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
 )
 
 func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
-	/* I want to expose here a simple strategy in order to deal with
-	   some errors we're experiencing in the network...
+	/*
+		I want to expose here a simple strategy in order to deal with
+		some errors we're experiencing in the network...
 
 		if publisher.stateError {
 			launch a recovery strategy
@@ -24,25 +24,18 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 			return
 		}
 
-		writer := publisher.writer
-	    for {
-			if err := writer.WriteMessage(); err != nil {
+		for {                                                                   // OK
+			if err := writer.WriteMessage(); err != nil {                       // OK
 				ATTENTION:  the first failer MUST block other attempts,
-				            therefore other running attempts must fall into
+							therefore other running attempts must fall into
 							the recovery strategy
 
 				set publisher.stateError to error,
 				so other attempts to write will be redirected to
 				the recovery strategy
 
-				wait some timeout then
-				if err := writer.Close(); err != nil {
-					just log the error, and we know that here we've lost
-					the current batch of messages, so, bad luck.
-				}
-
-				publisher.writer = opts.writerFactory() // build a new connection
-				continue // in order to repeat this attempt, at least 3 times
+				wait some timeout then                                          // OK
+				continue // in order to repeat this attempt, at least 3 times   // OK
 			}
 
 			// if you are here
@@ -53,12 +46,23 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 		}
 	*/
 
-	writer := publisher.writer
-	if err := writer.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(uuid.New().String()),
-		Value: payload,
-	}); err != nil {
-		return errors.Wrapf(err, "cannot write message to Kafka")
+	key := publisher.opts.keyGenerator.Generate()
+
+	for {
+		if err := publisher.writer.WriteMessages(ctx, kafka.Message{
+			Key:   key,
+			Value: payload,
+		}); err != nil {
+			publisher.log.Errorf(err, "cannot write message to Kafka")
+
+			if publisher.opts.backoffStrategy != nil {
+				publisher.opts.backoffStrategy.Wait()
+			}
+
+			continue
+		}
+
+		break
 	}
 
 	return nil
@@ -66,5 +70,9 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 
 // Shutdown method to perform a graceful shutdown.
 func (publisher *Publisher) Shutdown(_ context.Context) error {
-	return publisher.closeWriter()
+	if err := publisher.closeWriter(); err != nil {
+		return errors.Wrapf(err, "cannot close kafka connection")
+	}
+
+	return nil
 }

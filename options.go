@@ -1,6 +1,8 @@
 package kafko
 
 import (
+	"time"
+
 	"github.com/segmentio/kafka-go"
 )
 
@@ -30,6 +32,26 @@ func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
 
 	// Return a predefined error for dropped messages.
 	return ErrMessageDropped
+}
+
+type keyGenerator interface {
+	Generate() []byte
+}
+
+type keyGeneratorDefault struct{}
+
+func (gen *keyGeneratorDefault) Generate() []byte {
+	return nil // add an example with this piece of code: []byte(uuid.New().String())
+}
+
+type backoffStrategy interface {
+	Wait()
+}
+
+type backoffStrategyDefault struct{}
+
+func (gen *backoffStrategyDefault) Wait() {
+	time.Sleep(waitNextAtempt)
 }
 
 // OptionsListener is a configuration struct for a Kafka consumer.
@@ -148,6 +170,8 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 type OptionsPublisher struct {
 	writerFactory     WriterFactory
 	processDroppedMsg ProcessDroppedMsgHandler
+	keyGenerator      keyGenerator
+	backoffStrategy   backoffStrategy
 
 	metricMessages Incrementer
 	metricErrors   Incrementer
@@ -162,6 +186,18 @@ func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *Op
 
 func (opts *OptionsPublisher) WithProcessDroppedMsg(handler ProcessDroppedMsgHandler) *OptionsPublisher {
 	opts.processDroppedMsg = handler
+
+	return opts
+}
+
+func (opts *OptionsPublisher) WithKeyGenerator(keyGenerator keyGenerator) *OptionsPublisher {
+	opts.keyGenerator = keyGenerator
+
+	return opts
+}
+
+func (opts *OptionsPublisher) WithBackoffStrategy(backoffStrategy backoffStrategy) *OptionsPublisher {
+	opts.backoffStrategy = backoffStrategy
 
 	return opts
 }
@@ -192,6 +228,8 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 			return nil
 		},
 		processDroppedMsg: defaultProcessDroppedMsg,
+		keyGenerator:      new(keyGeneratorDefault),
+		backoffStrategy:   new(backoffStrategyDefault),
 		metricMessages:    new(nopIncrementer),
 		metricErrors:      new(nopIncrementer),
 		metricDuration:    new(nopDuration),
@@ -204,6 +242,14 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 
 		if opt.processDroppedMsg != nil {
 			finalOpts.processDroppedMsg = opt.processDroppedMsg
+		}
+
+		if opt.keyGenerator != nil {
+			finalOpts.keyGenerator = opt.keyGenerator
+		}
+
+		if opt.backoffStrategy != nil {
+			finalOpts.backoffStrategy = opt.backoffStrategy
 		}
 
 		if opt.metricMessages != nil {

@@ -24,11 +24,11 @@ func (m *MockLogger) Printf(format string, v ...interface{}) {
 }
 
 func (m *MockLogger) Panicf(err error, format string, v ...interface{}) {
-	m.PanicMessages = append(m.PanicMessages, fmt.Sprint(err, fmt.Sprintf(format, v...)))
+	m.PanicMessages = append(m.PanicMessages, err.Error(), fmt.Sprintf(format, v...))
 }
 
 func (m *MockLogger) Errorf(err error, format string, v ...interface{}) {
-	m.ErrorMessages = append(m.ErrorMessages, fmt.Sprint(err, fmt.Sprintf(format, v...)))
+	m.ErrorMessages = append(m.ErrorMessages, err.Error(), fmt.Sprintf(format, v...))
 }
 
 func NewMockLogger() *MockLogger {

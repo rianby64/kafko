@@ -23,9 +23,6 @@ type Publisher struct {
 
 	writer              Writer
 	writeMessagesLocker sync.Locker
-
-	recreateWriter       bool
-	recreateWriterLocker *sync.RWMutex
 }
 
 func (publisher *Publisher) closeWriter() error {
@@ -47,7 +44,5 @@ func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 
 		writeMessagesLocker: &sync.Mutex{},
 		writer:              finalOpts.writerFactory(),
-
-		recreateWriterLocker: &sync.RWMutex{},
 	}
 }

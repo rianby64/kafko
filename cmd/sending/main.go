@@ -45,6 +45,8 @@ func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
+	const maxTaskAtOnce = 500
+
 	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
 		writer := &kafka.Writer{
 			Addr:        kafka.TCP(cfg.KafkaBrokers...),
@@ -65,7 +67,7 @@ func main() {
 
 	publisher := kafko.NewPublisher(log, opts)
 
-	tasksAtOnce := make(chan struct{}, 500)
+	tasksAtOnce := make(chan struct{}, maxTaskAtOnce)
 
 	for index := 0; index < 10000000; index++ {
 		go func(index int) {
