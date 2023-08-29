@@ -61,8 +61,6 @@ func main() {
 		writer.AllowAutoTopicCreation = true
 
 		return writer
-	}).WithProcessDroppedMsg(func(_ *kafka.Message, log kafko.Logger) error {
-		return nil
 	})
 
 	publisher := kafko.NewPublisher(log, opts)

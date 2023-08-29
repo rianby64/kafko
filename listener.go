@@ -7,7 +7,13 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-type ProcessDroppedMsgHandler func(msg *kafka.Message, log Logger) error
+// ProcessDroppedMsgHandler is supposed to handle those messages that couldn't make their path to Kafka.
+// Try to publish to another resource the mssage.
+//
+// `lastError` is the error that occurred in first place.
+//
+// `log` is the logger you should use.
+type ProcessDroppedMsgHandler func(msg *kafka.Message, lastError error, log Logger)
 
 type Logger interface {
 	Printf(format string, v ...any)

@@ -26,12 +26,16 @@ type nopDuration struct{}
 func (n *nopDuration) Observe(float64) {}
 
 // defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
+func defaultProcessDroppedMsg(msg *kafka.Message, lastError error, log Logger) {
 	// Log the dropped message with its content.
-	log.Errorf(ErrMessageDropped, "msg = %s, key = %s, topic = %s, partition = %d, offset = %d", string(msg.Value), string(msg.Key), msg.Topic, msg.Partition, msg.Offset)
-
-	// Return a predefined error for dropped messages.
-	return ErrMessageDropped
+	log.Errorf(lastError,
+		"msg = %s, key = %s, topic = %s, partition = %d, offset = %d",
+		string(msg.Value),
+		string(msg.Key),
+		msg.Topic,
+		msg.Partition,
+		msg.Offset,
+	)
 }
 
 type keyGenerator interface {
