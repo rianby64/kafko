@@ -78,9 +78,12 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 	}
 
 	if lastError := publisher.lastError(); lastError != nil {
-		publisher.opts.processDroppedMsg(&msg, lastError, publisher.log)
+		err := publisher.opts.processDroppedMsg(&msg, publisher.log)
+		if err != nil {
+			return errors.Wrap(err, "cannot process dropped message")
+		}
 
-		return ErrMessageDropped
+		return nil
 	}
 
 	defer publisher.clearStateError()

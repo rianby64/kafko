@@ -137,13 +137,13 @@ func (w *MockWriter_caseFailFirstAndOthersFailToo) WriteMessages(ctx context.Con
 	return errRandomError // We've to log, just to log this error, then move on with the strategy and on and on...
 }
 
-type backoffStrategy_Case_Fail_FirstAndOthersFailToo struct{} //nolint:revive,stylecheck
+type backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo struct{} //nolint:revive,stylecheck
 
-func (backoffStrategy_Case_Fail_FirstAndOthersFailToo) Wait() {
+func (backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait() {
 	time.Sleep(time.Hour)
 }
 
-func Test_Case_Fail_FirstAndOthersFailToo(t *testing.T) {
+func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
@@ -160,9 +160,11 @@ func Test_Case_Fail_FirstAndOthersFailToo(t *testing.T) {
 		WithWriterFactory(func() kafko.Writer {
 			return &actualWriter
 		}).
-		WithBackoffStrategy(&backoffStrategy_Case_Fail_FirstAndOthersFailToo{}).
-		WithProcessDroppedMsg(func(msg *kafka.Message, lastErr error, log kafko.Logger) {
+		WithBackoffStrategy(&backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo{}).
+		WithProcessDroppedMsg(func(msg *kafka.Message, log kafko.Logger) error {
 			calledOnceTheProcessDroppedMsg = true
+
+			return errRandomError
 		}),
 	)
 
@@ -170,7 +172,7 @@ func Test_Case_Fail_FirstAndOthersFailToo(t *testing.T) {
 
 	go func() {
 		go func() {
-			time.Sleep(time.Millisecond)
+			time.Sleep(time.Millisecond * 100)
 			waitForFirstFail <- struct{}{}
 		}()
 
@@ -183,12 +185,12 @@ func Test_Case_Fail_FirstAndOthersFailToo(t *testing.T) {
 
 	<-waitForFirstFail
 
-	expectedErr := kafko.ErrMessageDropped
+	expectedErr := errRandomError
 	actualErr := publisher.Publish(ctx, payload)
 
 	expectedLog.Errorf(errRandomError, "cannot write message to Kafka")
 
-	assert.Equal(t, expectedErr, actualErr)
+	assert.ErrorIs(t, actualErr, expectedErr)
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 	assert.True(t, calledOnceTheProcessDroppedMsg)

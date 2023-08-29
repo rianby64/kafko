@@ -13,7 +13,7 @@ import (
 // `lastError` is the error that occurred in first place.
 //
 // `log` is the logger you should use.
-type ProcessDroppedMsgHandler func(msg *kafka.Message, lastError error, log Logger)
+type ProcessDroppedMsgHandler func(msg *kafka.Message, log Logger) error
 
 type Logger interface {
 	Printf(format string, v ...any)
