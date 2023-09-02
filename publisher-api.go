@@ -2,6 +2,7 @@ package kafko
 
 import (
 	"context"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
@@ -54,6 +55,12 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 
 // Publish accepts only one payload, is concurrent-safe. Call it from different places at the same time.
 func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
+	now := publisher.opts.time.Now()
+
+	defer func() {
+		publisher.opts.metricDuration.Observe(time.Since(now).Seconds())
+	}()
+
 	shouldClearStateBeforeReturning := true
 	key := publisher.opts.keyGenerator.Generate()
 	msg := kafka.Message{
@@ -62,6 +69,8 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 	}
 
 	if lastError := publisher.lastError(); lastError != nil {
+		publisher.opts.metricErrors.Inc()
+
 		if err := publisher.opts.processDroppedMsg(&msg, publisher.log); err != nil {
 			return errors.Wrap(err, "cannot process dropped message")
 		}
@@ -80,6 +89,8 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 
 	for {
 		if err := publisher.writer.WriteMessages(ctx, msg); err != nil {
+			publisher.opts.metricErrors.Inc()
+
 			if shoulExitFromLoop, err := publisher.processError(err, &msg); shoulExitFromLoop {
 				shouldClearStateBeforeReturning = false
 
@@ -93,6 +104,8 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 
 		break
 	}
+
+	publisher.opts.metricMessages.Inc()
 
 	return nil
 }

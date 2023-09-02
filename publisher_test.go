@@ -273,3 +273,5 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 }
 
 // Perhaps I should test the case when a panic happens under some conditions...
+
+// Let's check Shutdown

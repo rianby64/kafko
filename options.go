@@ -3,8 +3,36 @@ package kafko
 import (
 	"time"
 
+	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
 )
+
+var (
+	ErrMessageDropped = errors.New("message dropped")
+	ErrResourceIsNil  = errors.New("resource is nil")
+)
+
+// ProcessDroppedMsgHandler is supposed to handle those messages that couldn't make their path to Kafka.
+//
+//	`msg` is the message that has been dropped
+//	`log` is the logger you should use.
+type ProcessDroppedMsgHandler func(msg *kafka.Message, log Logger) error
+
+type Logger interface {
+	Printf(format string, v ...any)
+	Panicf(err error, format string, v ...any)
+	Errorf(err error, format string, v ...any)
+}
+
+type Time interface {
+	Now() time.Time
+}
+
+type defaultTime struct{}
+
+func (defaultTime) Now() time.Time {
+	return time.Now()
+}
 
 type ReaderFactory func() Reader
 type WriterFactory func() Writer
@@ -182,6 +210,8 @@ type OptionsPublisher struct {
 	metricMessages Incrementer
 	metricErrors   Incrementer
 	metricDuration Duration
+
+	time Time
 }
 
 func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *OptionsPublisher {
@@ -239,6 +269,7 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 		metricMessages:    new(nopIncrementer),
 		metricErrors:      new(nopIncrementer),
 		metricDuration:    new(nopDuration),
+		time:              new(defaultTime),
 	}
 
 	for _, opt := range opts {
@@ -268,6 +299,10 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 
 		if opt.metricDuration != nil {
 			finalOpts.metricDuration = opt.metricDuration
+		}
+
+		if opt.time != nil {
+			finalOpts.time = opt.time
 		}
 	}
 

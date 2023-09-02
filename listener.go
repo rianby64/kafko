@@ -3,34 +3,14 @@ package kafko
 import (
 	"context"
 
-	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
 )
-
-// ProcessDroppedMsgHandler is supposed to handle those messages that couldn't make their path to Kafka.
-// Try to publish to another resource the mssage.
-//
-// `lastError` is the error that occurred in first place.
-//
-// `log` is the logger you should use.
-type ProcessDroppedMsgHandler func(msg *kafka.Message, log Logger) error
-
-type Logger interface {
-	Printf(format string, v ...any)
-	Panicf(err error, format string, v ...any)
-	Errorf(err error, format string, v ...any)
-}
 
 type Reader interface {
 	Close() error
 	FetchMessage(ctx context.Context) (kafka.Message, error)
 	CommitMessages(ctx context.Context, msgs ...kafka.Message) error
 }
-
-var (
-	ErrMessageDropped = errors.New("message dropped")
-	ErrResourceIsNil  = errors.New("resource is nil")
-)
 
 type Listener struct {
 	messageChan chan []byte
