@@ -271,3 +271,5 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 
 	assert.Equal(t, NumberOfAttempts-1, failedPublish)
 }
+
+// Perhaps I should test the case when a panic happens under some conditions...

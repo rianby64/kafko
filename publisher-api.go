@@ -31,44 +31,6 @@ func (publisher *Publisher) clearStateError() {
 	publisher.stateError = nil
 }
 
-/*
-	I want to expose here a simple strategy in order to deal with
-	some errors we're experiencing in the network...
-
-	if publisher.stateError {                                               // OK
-		launch a recovery strategy                                          // OK
-			- write in the disk
-			- send to an available kafka topic
-			- write to mongoDB
-			- ...
-			- log this thing
-			- who cares!!!
-
-		return
-	}
-
-	for {                                                                   // OK
-		if err := writer.WriteMessage(); err != nil {                       // OK
-			ATTENTION:  the first failer MUST block other attempts,
-						therefore other running attempts must fall into
-						the recovery strategy
-
-			set publisher.stateError to error,
-			so other attempts to write will be redirected to
-			the recovery strategy
-
-			wait some timeout then                                          // OK
-			continue // in order to repeat this attempt, at least 3 times   // OK
-		}
-
-		// if you are here
-		set publisher.stateError to NO-error,                               // OK
-		so other attempts will take place as expected                       // OK
-
-		return // so break the loop                                         // OK
-	}
-*/
-
 func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, error) {
 	publisher.processErrorLock.Lock()
 
@@ -82,6 +44,8 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 		return true, nil
 	}
 
+	// In fact, setStateError happens after a possible panic
+	// but let's leave the strange defer just in case
 	publisher.setStateError(err)
 	publisher.log.Errorf(err, "cannot write message to Kafka")
 
@@ -105,6 +69,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 		return nil
 	}
 
+	// I need this strange defer because I need to guarantee panic won't block other attempts
 	defer func() {
 		if !shouldClearStateBeforeReturning {
 			return
