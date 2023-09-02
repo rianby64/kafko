@@ -21,10 +21,10 @@ type Publisher struct {
 	log  Logger
 	opts *OptionsPublisher
 
-	writer              Writer
-	writeMessagesLocker sync.Locker
+	writer           Writer
+	processErrorLock sync.Locker
 
-	stateErrorFlag error
+	stateError     error
 	stateErrorLock *sync.RWMutex
 }
 
@@ -45,10 +45,10 @@ func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 		log:  log,
 		opts: finalOpts,
 
-		writeMessagesLocker: &sync.Mutex{},
-		writer:              finalOpts.writerFactory(),
+		writer:           finalOpts.writerFactory(),
+		processErrorLock: &sync.Mutex{},
 
-		stateErrorFlag: nil,
+		stateError:     nil,
 		stateErrorLock: &sync.RWMutex{},
 	}
 }

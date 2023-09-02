@@ -12,7 +12,7 @@ func (publisher *Publisher) lastError() error {
 
 	defer publisher.stateErrorLock.RUnlock()
 
-	return publisher.stateErrorFlag
+	return publisher.stateError
 }
 
 func (publisher *Publisher) setStateError(err error) {
@@ -20,7 +20,7 @@ func (publisher *Publisher) setStateError(err error) {
 
 	defer publisher.stateErrorLock.Unlock()
 
-	publisher.stateErrorFlag = err
+	publisher.stateError = err
 }
 
 func (publisher *Publisher) clearStateError() {
@@ -28,7 +28,7 @@ func (publisher *Publisher) clearStateError() {
 
 	defer publisher.stateErrorLock.Unlock()
 
-	publisher.stateErrorFlag = nil
+	publisher.stateError = nil
 }
 
 /*
@@ -69,8 +69,28 @@ func (publisher *Publisher) clearStateError() {
 	}
 */
 
+func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, error) {
+	publisher.processErrorLock.Lock()
+
+	defer publisher.processErrorLock.Unlock()
+
+	if lastError := publisher.lastError(); lastError != nil {
+		if err := publisher.opts.processDroppedMsg(msg, publisher.log); err != nil {
+			return true, errors.Wrap(err, "cannot process dropped message")
+		}
+
+		return true, nil
+	}
+
+	publisher.setStateError(err)
+	publisher.log.Errorf(err, "cannot write message to Kafka")
+
+	return false, nil
+}
+
 // Publish accepts only one payload, is concurrent-safe. Call it from different places at the same time.
 func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
+	shouldClearStateBeforeReturning := true
 	key := publisher.opts.keyGenerator.Generate()
 	msg := kafka.Message{
 		Key:   key,
@@ -78,25 +98,30 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 	}
 
 	if lastError := publisher.lastError(); lastError != nil {
-		err := publisher.opts.processDroppedMsg(&msg, publisher.log)
-		if err != nil {
+		if err := publisher.opts.processDroppedMsg(&msg, publisher.log); err != nil {
 			return errors.Wrap(err, "cannot process dropped message")
 		}
 
 		return nil
 	}
 
-	defer publisher.clearStateError()
+	defer func() {
+		if !shouldClearStateBeforeReturning {
+			return
+		}
+
+		publisher.clearStateError()
+	}()
 
 	for {
 		if err := publisher.writer.WriteMessages(ctx, msg); err != nil {
-			publisher.setStateError(err)
+			if shoulExitFromLoop, err := publisher.processError(err, &msg); shoulExitFromLoop {
+				shouldClearStateBeforeReturning = false
 
-			publisher.log.Errorf(err, "cannot write message to Kafka")
-
-			if publisher.opts.backoffStrategy != nil {
-				publisher.opts.backoffStrategy.Wait()
+				return err
 			}
+
+			publisher.opts.backoffStrategy.Wait()
 
 			continue
 		}

@@ -3,6 +3,8 @@ package kafko_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -89,6 +91,10 @@ func (w *MockWriter_caseNoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecon
 	return nil
 }
 
+type MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime struct{} //nolint:revive,stylecheck
+
+func (MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime) Wait() {}
+
 func Test_Case_OK_WriteMessages_failedFirstAttempt_successSecondAttempt(t *testing.T) {
 	t.Parallel()
 
@@ -110,7 +116,7 @@ func Test_Case_OK_WriteMessages_failedFirstAttempt_successSecondAttempt(t *testi
 		WithWriterFactory(func() kafko.Writer {
 			return &actualWriter
 		}).
-		WithBackoffStrategy(nil),
+		WithBackoffStrategy(&MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime{}),
 	)
 
 	expectedErr := error(nil)
@@ -132,6 +138,8 @@ func (w *MockWriter_caseFailFirstAndOthersFailToo) Close() error {
 func (w *MockWriter_caseFailFirstAndOthersFailToo) WriteMessages(ctx context.Context, _ ...kafka.Message) error {
 	_, cancel := context.WithCancel(ctx)
 
+	time.Sleep(time.Millisecond)
+
 	defer cancel()
 
 	return errRandomError // We've to log, just to log this error, then move on with the strategy and on and on...
@@ -139,7 +147,7 @@ func (w *MockWriter_caseFailFirstAndOthersFailToo) WriteMessages(ctx context.Con
 
 type backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo struct{} //nolint:revive,stylecheck
 
-func (backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait() {
+func (b *backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait() {
 	time.Sleep(time.Hour)
 }
 
@@ -194,4 +202,72 @@ func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 	assert.True(t, calledOnceTheProcessDroppedMsg)
+}
+
+type backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce struct { //nolint:revive,stylecheck
+	t           *testing.T
+	calledTimes int
+}
+
+func (b *backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce) Wait() {
+	b.calledTimes++
+
+	if b.calledTimes > 1 {
+		b.t.Error("should be called once, and only once")
+	}
+
+	time.Sleep(time.Hour)
+}
+
+func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *testing.T) {
+	t.Parallel()
+
+	NumberOfAttempts := 1000
+	waitGroup := sync.WaitGroup{}
+
+	ctx := context.Background()
+	calledProcessDroppedMsg := 0
+
+	actualLog := log.NewMockLogger()
+	actualWriter := MockWriter_caseFailFirstAndOthersFailToo{}
+
+	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return &actualWriter
+		}).
+		WithBackoffStrategy(&backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce{t: t}).
+		WithProcessDroppedMsg(func(msg *kafka.Message, log kafko.Logger) error {
+			calledProcessDroppedMsg++
+
+			return errRandomError
+		}),
+	)
+
+	waitGroup.Add(NumberOfAttempts - 1) // one of the attempts will fall into a infinity loop, so do not count int.
+
+	expectedErr := errRandomError
+	failedPublish := 0
+	failedPublishChan := make(chan struct{}, NumberOfAttempts)
+
+	go func() {
+		for range failedPublishChan {
+			failedPublish++
+		}
+	}()
+
+	for index := 0; index < NumberOfAttempts; index++ {
+		go func(index int) {
+			defer waitGroup.Done()
+
+			actualErr := publisher.Publish(ctx, []byte(fmt.Sprint(index)))
+
+			assert.ErrorIs(t, actualErr, expectedErr)
+			failedPublishChan <- struct{}{}
+		}(index)
+	}
+
+	waitGroup.Wait()
+	time.Sleep(time.Millisecond)
+
+	assert.Equal(t, NumberOfAttempts-1, failedPublish)
 }
