@@ -43,41 +43,15 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 	return publisher.loopForever(ctx, &msg)
 }
 
-func (publisher *Publisher) loopForever(ctx context.Context, msg *kafka.Message) error {
-	shouldClearStateBeforeReturning := true
-
-	// I need this strange defer because I need to guarantee panic won't block other attempts
-	defer func() {
-		if !shouldClearStateBeforeReturning {
-			return
-		}
-
-		publisher.clearStateError()
-	}()
-
-	for {
-		if err := publisher.writer.WriteMessages(ctx, *msg); err != nil {
-			publisher.opts.metricErrors.Inc()
-
-			if shoulExitFromLoop, err := publisher.processError(err, msg); shoulExitFromLoop {
-				shouldClearStateBeforeReturning = false
-
-				return err
-			}
-
-			publisher.opts.backoffStrategy.Wait()
-
-			continue
-		}
-
-		publisher.opts.metricMessages.Inc()
-
-		return nil
-	}
-}
-
 // Shutdown method to perform a graceful shutdown.
 func (publisher *Publisher) Shutdown(ctx context.Context) error {
+	// This is a solution that may be blocked by a long write. Avoid it.
+	publisher.shutdownLock.Lock()
+
+	defer publisher.shutdownLock.Unlock()
+
+	publisher.shutdownFlag = true
+
 	errChan := make(chan error, 1)
 
 	go func() {

@@ -86,6 +86,39 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 	return false, nil
 }
 
+func (publisher *Publisher) loopForever(ctx context.Context, msg *kafka.Message) error {
+	shouldClearStateBeforeReturning := true
+
+	// I need this strange defer because I need to guarantee panic won't block other attempts
+	defer func() {
+		if !shouldClearStateBeforeReturning {
+			return
+		}
+
+		publisher.clearStateError()
+	}()
+
+	for {
+		if err := publisher.writer.WriteMessages(ctx, *msg); err != nil {
+			publisher.opts.metricErrors.Inc()
+
+			if shoulExitFromLoop, err := publisher.processError(err, msg); shoulExitFromLoop {
+				shouldClearStateBeforeReturning = false
+
+				return err
+			}
+
+			publisher.opts.backoffStrategy.Wait()
+
+			continue
+		}
+
+		publisher.opts.metricMessages.Inc()
+
+		return nil
+	}
+}
+
 func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 	finalOpts := obtainFinalOptionsPublisher(log, opts...)
 

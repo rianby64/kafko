@@ -378,7 +378,6 @@ func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages(t
 	assert.Equal(t, expectedLog, actualLog)
 }
 
-/*
 func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages_FurtherPublishFails(t *testing.T) {
 	t.Parallel()
 
@@ -422,4 +421,3 @@ func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages_F
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 }
-*/
