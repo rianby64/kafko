@@ -28,9 +28,9 @@ type Time interface {
 	Now() time.Time
 }
 
-type defaultTime struct{}
+type timeDefault struct{}
 
-func (defaultTime) Now() time.Time {
+func (timeDefault) Now() time.Time {
 	return time.Now()
 }
 
@@ -269,7 +269,7 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 		metricMessages:    new(nopIncrementer),
 		metricErrors:      new(nopIncrementer),
 		metricDuration:    new(nopDuration),
-		time:              new(defaultTime),
+		time:              new(timeDefault),
 	}
 
 	for _, opt := range opts {

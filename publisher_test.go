@@ -16,9 +16,13 @@ import (
 
 type MockWriter_caseNoErrCloseAppendAtWriteMessages struct { //nolint:revive,stylecheck
 	writtenMsgs []kafka.Message
+
+	closeCalledTimes int
 }
 
 func (w *MockWriter_caseNoErrCloseAppendAtWriteMessages) Close() error {
+	w.closeCalledTimes++
+
 	return nil
 }
 
@@ -274,4 +278,39 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 
 // Perhaps I should test the case when a panic happens under some conditions...
 
-// Let's check Shutdown
+func Test_Case_OK_CloseByShutdown_oneMessage_WriteMessages(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	payload := []byte("payload OK")
+
+	expectedLog := log.NewMockLogger()
+	actualLog := log.NewMockLogger()
+
+	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
+		writtenMsgs:      []kafka.Message{{Value: payload}},
+		closeCalledTimes: 1,
+	}
+	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
+		writtenMsgs: []kafka.Message{},
+	}
+
+	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return &actualWriter
+		}),
+	)
+
+	expectedPublishErr := error(nil)
+	actualPublishErr := publisher.Publish(ctx, payload)
+
+	assert.Equal(t, expectedPublishErr, actualPublishErr)
+
+	expectedShutdownErr := error(nil)
+	actualShutdownErr := publisher.Shutdown(ctx)
+
+	assert.Equal(t, expectedShutdownErr, actualShutdownErr)
+
+	assert.Equal(t, expectedWriter, actualWriter)
+	assert.Equal(t, expectedLog, actualLog)
+}
