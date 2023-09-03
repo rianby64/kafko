@@ -8,8 +8,8 @@ import (
 )
 
 var (
-	ErrMessageDropped = errors.New("message dropped")
-	ErrResourceIsNil  = errors.New("resource is nil")
+	ErrMessageDropped      = errors.New("message dropped")
+	ErrResourceUnavailable = errors.New("resource unavailable")
 )
 
 // ProcessDroppedMsgHandler is supposed to handle those messages that couldn't make their path to Kafka.
@@ -160,7 +160,7 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 	finalOpts := &OptionsListener{
 		processDroppedMsg: defaultProcessDroppedMsg,
 		readerFactory: func() Reader {
-			log.Panicf(ErrResourceIsNil, "provide the reader")
+			log.Panicf(ErrResourceUnavailable, "provide the reader")
 
 			return nil
 		},
@@ -259,7 +259,7 @@ func (opts *OptionsPublisher) WithMetricDurationProcess(metric Duration) *Option
 func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *OptionsPublisher {
 	finalOpts := &OptionsPublisher{
 		writerFactory: func() Writer {
-			log.Panicf(ErrResourceIsNil, "provide the writer")
+			log.Panicf(ErrResourceUnavailable, "provide the writer")
 
 			return nil
 		},

@@ -26,6 +26,9 @@ type Publisher struct {
 
 	stateError     error
 	stateErrorLock *sync.RWMutex
+
+	shutdownFlag bool
+	shutdownLock *sync.RWMutex
 }
 
 func (publisher *Publisher) closeWriter() error {
@@ -95,5 +98,8 @@ func NewPublisher(log Logger, opts ...*OptionsPublisher) *Publisher {
 
 		stateError:     nil,
 		stateErrorLock: &sync.RWMutex{},
+
+		shutdownFlag: false,
+		shutdownLock: &sync.RWMutex{},
 	}
 }
