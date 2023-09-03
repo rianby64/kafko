@@ -41,6 +41,14 @@ func (publisher *Publisher) closeWriter() error {
 	return nil
 }
 
+func (publisher *Publisher) checkShutdownFlag() bool {
+	publisher.shutdownLock.RLock()
+
+	defer publisher.shutdownLock.RUnlock()
+
+	return publisher.shutdownFlag
+}
+
 func (publisher *Publisher) lastError() error {
 	publisher.stateErrorLock.RLock()
 
@@ -70,7 +78,7 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 
 	defer publisher.processErrorLock.Unlock()
 
-	if lastError := publisher.lastError(); lastError != nil {
+	if lastError := publisher.lastError(); lastError != nil { // || publisher.checkShutdownFlag() {
 		if err := publisher.opts.processDroppedMsg(msg, publisher.log); err != nil {
 			return true, errors.Wrap(err, "cannot process dropped message")
 		}

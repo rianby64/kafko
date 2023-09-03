@@ -10,11 +10,7 @@ import (
 
 // Publish accepts only one payload, is concurrent-safe. Call it from different places at the same time.
 func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
-	publisher.shutdownLock.RLock()
-
-	defer publisher.shutdownLock.RUnlock()
-
-	if publisher.shutdownFlag {
+	if publisher.checkShutdownFlag() {
 		return errors.Wrap(ErrResourceUnavailable, "shutdown performed")
 	}
 
