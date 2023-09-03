@@ -66,10 +66,17 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 }
 
 // Shutdown method to perform a graceful shutdown.
-func (publisher *Publisher) Shutdown(_ context.Context) error {
-	if err := publisher.closeWriter(); err != nil {
-		return errors.Wrapf(err, "cannot close kafka connection")
-	}
+func (publisher *Publisher) Shutdown(ctx context.Context) error {
+	errChan := make(chan error, 1)
 
-	return nil
+	go func() {
+		errChan <- publisher.closeWriter()
+	}()
+
+	select {
+	case err := <-errChan:
+		return errors.Wrapf(err, "cannot close kafka connection")
+	case <-ctx.Done():
+		return errors.Wrapf(ctx.Err(), "shutdown canceled")
+	}
 }

@@ -314,3 +314,66 @@ func Test_Case_OK_CloseByShutdown_oneMessage_WriteMessages(t *testing.T) {
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 }
+
+type MockWriter_caseCloseDeadlock_AppendAtWriteMessages struct { //nolint:revive,stylecheck
+	writtenMsgs []kafka.Message
+
+	closeCalledTimes int
+}
+
+func (w *MockWriter_caseCloseDeadlock_AppendAtWriteMessages) Close() error {
+	w.closeCalledTimes++
+
+	time.Sleep(time.Hour) // block "forever"
+
+	return nil
+}
+
+func (w *MockWriter_caseCloseDeadlock_AppendAtWriteMessages) WriteMessages(ctx context.Context, msgs ...kafka.Message) error {
+	_, cancel := context.WithCancel(ctx)
+
+	defer cancel()
+
+	w.writtenMsgs = append(w.writtenMsgs, msgs...)
+
+	return nil
+}
+
+func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	payload := []byte("payload OK")
+
+	expectedLog := log.NewMockLogger()
+	actualLog := log.NewMockLogger()
+
+	expectedWriter := MockWriter_caseCloseDeadlock_AppendAtWriteMessages{
+		writtenMsgs:      []kafka.Message{{Value: payload}},
+		closeCalledTimes: 1,
+	}
+	actualWriter := MockWriter_caseCloseDeadlock_AppendAtWriteMessages{
+		writtenMsgs: []kafka.Message{},
+	}
+
+	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return &actualWriter
+		}),
+	)
+
+	expectedPublishErr := error(nil)
+	actualPublishErr := publisher.Publish(ctx, payload)
+
+	assert.Equal(t, expectedPublishErr, actualPublishErr)
+
+	go cancel() // let's simulate this scenario, context has been canceled somewhere else
+
+	expectedShutdownErr := context.Canceled
+	actualShutdownErr := publisher.Shutdown(ctx)
+
+	assert.ErrorIs(t, actualShutdownErr, expectedShutdownErr)
+
+	assert.Equal(t, expectedWriter, actualWriter)
+	assert.Equal(t, expectedLog, actualLog)
+}
