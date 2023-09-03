@@ -18,6 +18,7 @@ type MockWriter_caseNoErrCloseAppendAtWriteMessages struct { //nolint:revive,sty
 	writtenMsgs []kafka.Message
 
 	closeCalledTimes int
+	delay            time.Duration
 }
 
 func (w *MockWriter_caseNoErrCloseAppendAtWriteMessages) Close() error {
@@ -33,7 +34,12 @@ func (w *MockWriter_caseNoErrCloseAppendAtWriteMessages) WriteMessages(ctx conte
 
 	w.writtenMsgs = append(w.writtenMsgs, msgs...)
 
-	return nil
+	select {
+	case <-time.After(w.delay):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err() //nolint:wrapcheck
+	}
 }
 
 func Test_Case_OK_noClose_oneMessage_WriteMessages(t *testing.T) {
@@ -417,6 +423,52 @@ func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages_F
 	actualPublishAfterShutdownErr := publisher.Publish(ctx, payload)
 
 	assert.ErrorIs(t, actualPublishAfterShutdownErr, expectedPublishAfterShutdownErr)
+
+	assert.Equal(t, expectedWriter, actualWriter)
+	assert.Equal(t, expectedLog, actualLog)
+}
+
+func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
+
+	payload := []byte("payload OK")
+
+	expectedLog := log.NewMockLogger()
+	actualLog := log.NewMockLogger()
+
+	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
+		writtenMsgs:      []kafka.Message{{Value: payload}},
+		closeCalledTimes: 1,
+		delay:            time.Second, // if this would take too long, Shutdown will hang
+	}
+	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
+		writtenMsgs: []kafka.Message{},
+		delay:       time.Second, // if this would take too long, Shutdown will hang
+	}
+
+	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return &actualWriter
+		}),
+	)
+
+	go func() {
+		time.Sleep(time.Millisecond)
+
+		expectedShutdownErr := error(nil)
+		actualShutdownErr := publisher.Shutdown(ctx)
+
+		assert.ErrorIs(t, actualShutdownErr, expectedShutdownErr)
+	}()
+
+	expectedPublishErr := error(nil)
+	actualPublishErr := publisher.Publish(ctx, payload)
+
+	assert.Equal(t, expectedPublishErr, actualPublishErr)
 
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
