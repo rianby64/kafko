@@ -428,12 +428,12 @@ func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages_F
 	assert.Equal(t, expectedLog, actualLog)
 }
 
-/*
 func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	payload := []byte("payload OK")
+	writeDelay := time.Second
 
 	expectedLog := log.NewMockLogger()
 	actualLog := log.NewMockLogger()
@@ -441,10 +441,10 @@ func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
 	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
 		writtenMsgs:      []kafka.Message{{Value: payload}},
 		closeCalledTimes: 1,
-		delay:            time.Hour, // if this would take too long, Shutdown will hang
+		delay:            writeDelay, // if this would take too long, Shutdown will hang
 	}
 	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		delay: time.Hour, // if this would take too long, Shutdown will hang
+		delay: writeDelay, // if this would take too long, Shutdown will hang
 	}
 
 	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
@@ -453,16 +453,10 @@ func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
 		}),
 	)
 
-	// expectedLog.Errorf(context.Canceled, "cannot write message to Kafka")
-
 	go func() {
 		time.Sleep(time.Millisecond) // wait a bit... just to make sure publisher.Publish has been reached
 
-		// this timeout exceedes the delay given for a long write.
-		// Therefore, when Shutdown finishes then, Publish fails
-		const reasonableTimeout = time.Minute * 30 // time.Millisecond * 10
-
-		ctx, cancel := context.WithTimeout(context.Background(), reasonableTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), writeDelay)
 
 		defer cancel()
 
@@ -480,4 +474,3 @@ func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 }
-*/
