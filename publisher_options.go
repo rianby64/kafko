@@ -99,10 +99,6 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 		if opt.metricDuration != nil {
 			finalOpts.metricDuration = opt.metricDuration
 		}
-
-		if opt.time != nil {
-			finalOpts.time = opt.time
-		}
 	}
 
 	return finalOpts

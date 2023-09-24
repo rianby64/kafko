@@ -14,6 +14,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type MockIncrementer struct{}
+
+func (MockIncrementer) Inc() {}
+
+type MockDuration struct{}
+
+func (MockDuration) Observe(float64) {}
+
+type MockKeyGenerator struct{}
+
+func (MockKeyGenerator) Generate() []byte {
+	return nil
+}
+
+type MockTime struct{}
+
+func (MockTime) Now() time.Time {
+	return time.Time{}
+}
+
 type MockWriter_caseNoErrCloseAppendAtWriteMessages struct { //nolint:revive,stylecheck
 	writtenMsgs []kafka.Message
 
@@ -61,7 +81,11 @@ func Test_Case_OK_noClose_oneMessage_WriteMessages(t *testing.T) {
 	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
 		WithWriterFactory(func() kafko.Writer {
 			return &actualWriter
-		}),
+		}).
+		WithMetricErrors(&MockIncrementer{}).
+		WithMetricMessages(&MockIncrementer{}).
+		WithMetricDurationProcess(&MockDuration{}).
+		WithKeyGenerator(&MockKeyGenerator{}),
 	)
 
 	expectedErr := error(nil)
