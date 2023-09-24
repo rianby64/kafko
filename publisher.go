@@ -22,13 +22,13 @@ type Publisher struct {
 	opts *OptionsPublisher
 
 	writer           Writer
-	processErrorLock sync.Locker
+	processErrorLock sync.Locker // this is a hack... get rid of this later
 
 	stateError     error
-	stateErrorLock *sync.RWMutex
+	stateErrorLock *sync.RWMutex // this is a hack... get rid of this later
 
 	shutdownFlag bool
-	shutdownLock *sync.RWMutex
+	shutdownLock *sync.RWMutex // this is a hack... get rid of this later
 }
 
 func (publisher *Publisher) closeWriter() error {
@@ -78,7 +78,7 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 
 	defer publisher.processErrorLock.Unlock()
 
-	if lastError := publisher.lastError(); lastError != nil { // || publisher.checkShutdownFlag() {
+	if lastError := publisher.lastError(); lastError != nil {
 		if err := publisher.opts.processDroppedMsg(msg, publisher.log); err != nil {
 			return true, errors.Wrap(err, "cannot process dropped message")
 		}
