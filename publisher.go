@@ -79,7 +79,7 @@ func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, e
 	defer publisher.processErrorLock.Unlock()
 
 	if lastError := publisher.lastError(); lastError != nil {
-		if err := publisher.opts.processDroppedMsg(msg, publisher.log); err != nil {
+		if err := publisher.opts.processDroppedMsg.Handle(msg); err != nil {
 			return true, errors.Wrap(err, "cannot process dropped message")
 		}
 

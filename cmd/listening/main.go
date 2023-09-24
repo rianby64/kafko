@@ -21,6 +21,24 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
+type ListenerHandler struct {
+	log log.Logger
+}
+
+func (handler *ListenerHandler) Handle(msg *kafka.Message) error {
+	payload := string(msg.Value)
+
+	handler.log.Printf("MSG OK (%s)", payload)
+
+	return nil
+}
+
+func NewListenerHandler(log log.Logger) *ListenerHandler {
+	return &ListenerHandler{
+		log: log,
+	}
+}
+
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
@@ -37,7 +55,7 @@ func main() {
 			ErrorLogger: log,
 			Logger:      log,
 		})
-	})
+	}).WithHandler(NewListenerHandler(log))
 
 	consumer := kafko.NewListener(log, opts)
 
@@ -61,14 +79,6 @@ func main() {
 			log.Errorf(err, "err := consumer.Shutdown(context.Background())")
 		}
 	}()
-
-	msgChan, errChan := consumer.MessageAndErrorChannels()
-
-	for msg := range msgChan {
-		errChan <- nil
-
-		log.Printf("MSG OK (%s)", string(msg))
-	}
 
 	<-shutdown
 

@@ -15,8 +15,3 @@ func (listener *Listener) Listen(_ context.Context) error {
 func (listener *Listener) Shutdown(_ context.Context) error {
 	return nil
 }
-
-// MessageAndErrorChannels returns the message and error channels for the Listener.
-func (listener *Listener) MessageAndErrorChannels() (<-chan []byte, chan<- error) {
-	return listener.messageChan, listener.errorChan
-}

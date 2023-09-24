@@ -12,11 +12,9 @@ var (
 	ErrResourceUnavailable = errors.New("resource unavailable")
 )
 
-// ProcessDroppedMsgHandler is supposed to handle those messages that couldn't make their path to Kafka.
-//
-//	`msg` is the message that has been dropped
-//	`log` is the logger you should use.
-type ProcessDroppedMsgHandler func(msg *kafka.Message, log Logger) error
+type MsgHandler interface {
+	Handle(msg *kafka.Message) error
+}
 
 type Logger interface {
 	Printf(format string, v ...any)
@@ -53,17 +51,19 @@ type nopDuration struct{}
 
 func (n *nopDuration) Observe(float64) {}
 
+type defaultProcessDroppedMsg struct{}
+
 // defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func defaultProcessDroppedMsg(msg *kafka.Message, log Logger) error {
+func (defaultProcessDroppedMsg) Handle(msg *kafka.Message) error {
 	// Log the dropped message with its content.
-	log.Errorf(ErrMessageDropped,
-		"msg = %s, key = %s, topic = %s, partition = %d, offset = %d",
-		string(msg.Value),
-		string(msg.Key),
-		msg.Topic,
-		msg.Partition,
-		msg.Offset,
-	)
+	// log.Errorf(ErrMessageDropped,
+	// 	"msg = %s, key = %s, topic = %s, partition = %d, offset = %d",
+	// 	string(msg.Value),
+	// 	string(msg.Key),
+	// 	msg.Topic,
+	// 	msg.Partition,
+	// 	msg.Offset,
+	// )
 
 	return ErrMessageDropped
 }

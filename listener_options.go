@@ -2,13 +2,15 @@ package kafko
 
 // OptionsListener is a configuration struct for a Kafka consumer.
 type OptionsListener struct {
-	processDroppedMsg ProcessDroppedMsgHandler // Handler function to process dropped messages.
-	readerFactory     ReaderFactory            // Factory function to create Reader instances.
+	processDroppedMsg MsgHandler    // Handler function to process dropped messages.
+	readerFactory     ReaderFactory // Factory function to create Reader instances.
 
 	metricMessagesProcessed Incrementer // Incrementer for the number of processed messages.
 	metricMessagesDropped   Incrementer // Incrementer for the number of dropped messages.
 	metricErrors            Incrementer // Incrementer for the number of Kafka errors.
-	metricDurationProcess   Duration
+	metricDurationProcess   Duration    // Observer for the duration of processing a kafka message.
+
+	processMsg MsgHandler // Handler function to process the message from the queue.
 }
 
 func (opts *OptionsListener) WithDurationProcess(metric Duration) *OptionsListener {
@@ -19,13 +21,8 @@ func (opts *OptionsListener) WithDurationProcess(metric Duration) *OptionsListen
 
 // WithProcessDroppedMsg sets the dropped message processing handler for the Options instance.
 // Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithProcessDroppedMsg(processDroppedMsg ProcessDroppedMsgHandler) *OptionsListener {
-	pdm := defaultProcessDroppedMsg
-	if processDroppedMsg != nil {
-		pdm = processDroppedMsg
-	}
-
-	opts.processDroppedMsg = pdm
+func (opts *OptionsListener) WithProcessDroppedMsg(processDroppedMsg MsgHandler) *OptionsListener {
+	opts.processDroppedMsg = processDroppedMsg
 
 	return opts
 }
@@ -62,6 +59,12 @@ func (opts *OptionsListener) WithMetricErrors(metric Incrementer) *OptionsListen
 	return opts
 }
 
+func (opts *OptionsListener) WithHandler(handler MsgHandler) *OptionsListener {
+	opts.processMsg = handler
+
+	return opts
+}
+
 // NewOptionsListener creates a new Options instance with default values.
 func NewOptionsListener() *OptionsListener {
 	return &OptionsListener{}
@@ -70,7 +73,7 @@ func NewOptionsListener() *OptionsListener {
 func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener {
 	// Set the default options.
 	finalOpts := &OptionsListener{
-		processDroppedMsg: defaultProcessDroppedMsg,
+		processDroppedMsg: new(defaultProcessDroppedMsg),
 		readerFactory: func() Reader {
 			log.Panicf(ErrResourceUnavailable, "provide the reader")
 
@@ -81,6 +84,8 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 		metricMessagesDropped:   new(nopIncrementer),
 		metricErrors:            new(nopIncrementer),
 		metricDurationProcess:   new(nopDuration),
+
+		processMsg: nil,
 	}
 
 	// Iterate through the provided custom options and override defaults if needed.
@@ -108,6 +113,14 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 		if opt.metricDurationProcess != nil {
 			finalOpts.metricDurationProcess = opt.metricDurationProcess
 		}
+
+		if opt.processMsg != nil {
+			finalOpts.processMsg = opt.processMsg
+		}
+	}
+
+	if finalOpts.processMsg == nil {
+		log.Panicf(ErrResourceUnavailable, "no handler defined for processing message")
 	}
 
 	return finalOpts

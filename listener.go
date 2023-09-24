@@ -13,9 +13,6 @@ type Reader interface {
 }
 
 type Listener struct {
-	messageChan chan []byte
-	errorChan   chan error
-
 	log  Logger
 	opts *OptionsListener
 }
@@ -25,24 +22,10 @@ type Listener struct {
 func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 	finalOpts := obtainFinalOptsListener(log, opts)
 
-	// messageChan should have a buffer size of 1 to accommodate for the case when
-	// the consumer did not process the message within the `processingTimeout` period.
-	// In the Listen method, we attempt to empty the listener.messageChan channel (only once)
-	// if the processingTimeout is reached. By setting the buffer size to 1, we ensure
-	// that the new message can be placed in the channel even if the previous message
-	// wasn't processed within the given timeout.
-	messageChan := make(chan []byte, 1)
-
-	// errorChan has a buffer size of 1 to allow the sender to send an error without blocking
-	// if the receiver is not ready to receive it yet.
-	errorChan := make(chan error, 1)
-
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		messageChan: messageChan,
-		errorChan:   errorChan,
-		log:         log,
-		opts:        finalOpts,
+		log:  log,
+		opts: finalOpts,
 	}
 }

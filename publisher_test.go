@@ -185,12 +185,21 @@ func (b *backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait() {
 	time.Sleep(time.Hour)
 }
 
+type MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo struct { //nolint:revive,stylecheck
+	calledOnceTheProcessDroppedMsg bool
+}
+
+func (m *MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo) Handle(_ *kafka.Message) error {
+	m.calledOnceTheProcessDroppedMsg = true
+
+	return errRandomError
+}
+
 func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	payload := []byte("never be published")
-	calledOnceTheProcessDroppedMsg := false
 
 	expectedLog := log.NewMockLogger()
 	actualLog := log.NewMockLogger()
@@ -198,16 +207,14 @@ func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 	expectedWriter := MockWriter_caseFailFirstAndOthersFailToo{}
 	actualWriter := MockWriter_caseFailFirstAndOthersFailToo{}
 
+	processDroppedMsg := &MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo{}
+
 	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
 		WithWriterFactory(func() kafko.Writer {
 			return &actualWriter
 		}).
 		WithBackoffStrategy(&backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo{}).
-		WithProcessDroppedMsg(func(msg *kafka.Message, log kafko.Logger) error {
-			calledOnceTheProcessDroppedMsg = true
-
-			return errRandomError
-		}),
+		WithProcessDroppedMsg(processDroppedMsg),
 	)
 
 	waitForFirstFail := make(chan struct{}, 1)
@@ -235,7 +242,7 @@ func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 	assert.ErrorIs(t, actualErr, expectedErr)
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
-	assert.True(t, calledOnceTheProcessDroppedMsg)
+	assert.True(t, processDroppedMsg.calledOnceTheProcessDroppedMsg)
 }
 
 type backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce struct { //nolint:revive,stylecheck
@@ -253,6 +260,16 @@ func (b *backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce) Wait() {
 	time.Sleep(time.Hour)
 }
 
+type MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail struct { //nolint:revive,stylecheck
+	calledProcessDroppedMsg int
+}
+
+func (m *MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail) Handle(_ *kafka.Message) error {
+	m.calledProcessDroppedMsg++
+
+	return errRandomError
+}
+
 func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *testing.T) {
 	t.Parallel()
 
@@ -260,7 +277,6 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 	waitGroup := sync.WaitGroup{}
 
 	ctx := context.Background()
-	calledProcessDroppedMsg := 0
 
 	actualLog := log.NewMockLogger()
 	actualWriter := MockWriter_caseFailFirstAndOthersFailToo{}
@@ -270,11 +286,7 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 			return &actualWriter
 		}).
 		WithBackoffStrategy(&backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce{t: t}).
-		WithProcessDroppedMsg(func(msg *kafka.Message, log kafko.Logger) error {
-			calledProcessDroppedMsg++
-
-			return errRandomError
-		}),
+		WithProcessDroppedMsg(&MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail{}),
 	)
 
 	waitGroup.Add(NumberOfAttempts - 1) // one of the attempts will fall into a infinity loop, so do not count int.

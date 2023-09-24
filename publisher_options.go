@@ -1,10 +1,11 @@
 package kafko
 
 type OptionsPublisher struct {
-	writerFactory     WriterFactory
-	processDroppedMsg ProcessDroppedMsgHandler
-	keyGenerator      keyGenerator
-	backoffStrategy   backoffStrategy
+	processDroppedMsg MsgHandler
+
+	writerFactory   WriterFactory
+	keyGenerator    keyGenerator
+	backoffStrategy backoffStrategy
 
 	metricMessages Incrementer
 	metricErrors   Incrementer
@@ -13,14 +14,14 @@ type OptionsPublisher struct {
 	time Time
 }
 
-func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *OptionsPublisher {
-	opts.writerFactory = writerFactory
+func (opts *OptionsPublisher) WithProcessDroppedMsg(handler MsgHandler) *OptionsPublisher {
+	opts.processDroppedMsg = handler
 
 	return opts
 }
 
-func (opts *OptionsPublisher) WithProcessDroppedMsg(handler ProcessDroppedMsgHandler) *OptionsPublisher {
-	opts.processDroppedMsg = handler
+func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *OptionsPublisher {
+	opts.writerFactory = writerFactory
 
 	return opts
 }
@@ -62,7 +63,7 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 
 			return nil
 		},
-		processDroppedMsg: defaultProcessDroppedMsg,
+		processDroppedMsg: new(defaultProcessDroppedMsg),
 		keyGenerator:      new(keyGeneratorDefault),
 		backoffStrategy:   new(backoffStrategyDefault),
 		metricMessages:    new(nopIncrementer),

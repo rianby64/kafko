@@ -49,13 +49,13 @@ func main() {
 
 	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
 		writer := &kafka.Writer{
-			Addr:        kafka.TCP(cfg.KafkaBrokers...),
-			Topic:       cfg.KafkaTopic,
-			ErrorLogger: log,
-			// Logger:       log,
+			Addr:         kafka.TCP(cfg.KafkaBrokers...),
+			Topic:        cfg.KafkaTopic,
+			ErrorLogger:  log,
 			BatchBytes:   batchBytes,
 			BatchSize:    batchSize,
 			BatchTimeout: batchTimeout,
+			Logger:       log,
 		}
 
 		writer.AllowAutoTopicCreation = true
