@@ -11,11 +11,9 @@ linters:
     - test
     - unused
   disable:
-    - gci
+    - exhaustruct
     - lll
     - tagliatelle
-    - exhaustivestruct
-    - exhaustruct
     - depguard
   # Run only fast linters from enabled linters set (first run won't be fast)
   # Default: false
