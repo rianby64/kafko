@@ -25,7 +25,7 @@ type ListenerHandler struct {
 	log log.Logger
 }
 
-func (handler *ListenerHandler) Handle(msg *kafka.Message) error {
+func (handler *ListenerHandler) Handle(_ context.Context, msg *kafka.Message) error {
 	payload := string(msg.Value)
 
 	handler.log.Printf("MSG OK (%s)", payload)

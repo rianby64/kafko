@@ -29,7 +29,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 	if lastError := publisher.lastError(); lastError != nil {
 		publisher.opts.metricErrors.Inc()
 
-		if err := publisher.opts.processDroppedMsg.Handle(&msg); err != nil {
+		if err := publisher.opts.processDroppedMsg.Handle(ctx, &msg); err != nil {
 			return errors.Wrap(err, "cannot process dropped message")
 		}
 

@@ -14,7 +14,7 @@ var (
 )
 
 type MsgHandler interface {
-	Handle(msg *kafka.Message) error
+	Handle(ctx context.Context, msg *kafka.Message) error
 }
 
 type Logger interface {
@@ -55,7 +55,7 @@ func (n *nopDuration) Observe(float64) {}
 type defaultProcessDroppedMsg struct{}
 
 // defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func (defaultProcessDroppedMsg) Handle(msg *kafka.Message) error {
+func (defaultProcessDroppedMsg) Handle(_ context.Context, msg *kafka.Message) error {
 	return errors.Wrapf(ErrMessageDropped,
 		"msg = %s, key = %s, topic = %s, partition = %d, offset = %d",
 		string(msg.Value),

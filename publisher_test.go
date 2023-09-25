@@ -190,7 +190,7 @@ type MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo struc
 	calledOnceTheProcessDroppedMsg bool
 }
 
-func (m *MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo) Handle(_ *kafka.Message) error {
+func (m *MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo) Handle(_ context.Context, _ *kafka.Message) error {
 	m.calledOnceTheProcessDroppedMsg = true
 
 	return errRandomError
@@ -265,7 +265,7 @@ type MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDo
 	calledProcessDroppedMsg int
 }
 
-func (m *MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail) Handle(_ *kafka.Message) error {
+func (m *MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail) Handle(_ context.Context, _ *kafka.Message) error {
 	m.calledProcessDroppedMsg++
 
 	return errRandomError

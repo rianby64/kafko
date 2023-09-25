@@ -73,13 +73,13 @@ func (publisher *Publisher) clearStateError() {
 	publisher.stateError = nil
 }
 
-func (publisher *Publisher) processError(err error, msg *kafka.Message) (bool, error) {
+func (publisher *Publisher) processError(ctx context.Context, err error, msg *kafka.Message) (bool, error) {
 	publisher.processErrorLock.Lock()
 
 	defer publisher.processErrorLock.Unlock()
 
 	if lastError := publisher.lastError(); lastError != nil {
-		if err := publisher.opts.processDroppedMsg.Handle(msg); err != nil {
+		if err := publisher.opts.processDroppedMsg.Handle(ctx, msg); err != nil {
 			return true, errors.Wrap(err, "cannot process dropped message")
 		}
 
@@ -110,7 +110,7 @@ func (publisher *Publisher) loopForever(ctx context.Context, msg *kafka.Message)
 		if err := publisher.writer.WriteMessages(ctx, *msg); err != nil {
 			publisher.opts.metricErrors.Inc()
 
-			if shoulExitFromLoop, err := publisher.processError(err, msg); shoulExitFromLoop {
+			if shoulExitFromLoop, err := publisher.processError(ctx, err, msg); shoulExitFromLoop {
 				shouldClearStateBeforeReturning = false
 
 				return err
