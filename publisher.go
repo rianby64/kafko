@@ -116,7 +116,7 @@ func (publisher *Publisher) loopForever(ctx context.Context, msg *kafka.Message)
 				return err
 			}
 
-			publisher.opts.backoffStrategy.Wait()
+			publisher.opts.backoffStrategy.Wait(ctx)
 
 			continue
 		}

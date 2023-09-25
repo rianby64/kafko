@@ -127,7 +127,8 @@ func (w *MockWriter_caseNoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecon
 
 type MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime struct{} //nolint:revive,stylecheck
 
-func (MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime) Wait() {}
+func (MockBackoffStrategy_NoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime) Wait(_ context.Context) {
+}
 
 func Test_Case_OK_WriteMessages_failedFirstAttempt_successSecondAttempt(t *testing.T) {
 	t.Parallel()
@@ -181,7 +182,7 @@ func (w *MockWriter_caseFailFirstAndOthersFailToo) WriteMessages(ctx context.Con
 
 type backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo struct{} //nolint:revive,stylecheck
 
-func (b *backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait() {
+func (b *backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo) Wait(_ context.Context) {
 	time.Sleep(time.Hour)
 }
 
@@ -250,7 +251,7 @@ type backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce struct { //nolint:r
 	calledTimes int
 }
 
-func (b *backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce) Wait() {
+func (b *backoffStrategy_Case_Fail_AllAtempts_But_CalledOnlyOnce) Wait(_ context.Context) {
 	b.calledTimes++
 
 	if b.calledTimes > 1 {
