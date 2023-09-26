@@ -28,6 +28,7 @@ func Test_Listener_OK(t *testing.T) { //nolint:funlen
 		Value: []byte("mocked message"),
 	}
 
+	inform := make(chan struct{}, 1)
 	actualLog := log.NewMockLogger()
 	mockHandler := mocks.NewMockMsgHandler(ctl)
 	mockReader := mocks.NewMockReader(ctl)
@@ -48,7 +49,9 @@ func Test_Listener_OK(t *testing.T) { //nolint:funlen
 		mockReader.EXPECT().
 			FetchMessage(ctx).
 			Do(func(ctx context.Context) {
-				time.Sleep(time.Second)
+				inform <- struct{}{}
+
+				time.Sleep(time.Millisecond)
 			}).
 			Return(mockMessage, nil),
 	)
@@ -68,7 +71,7 @@ func Test_Listener_OK(t *testing.T) { //nolint:funlen
 	go func(t *testing.T) {
 		t.Helper()
 
-		time.Sleep(time.Millisecond * 100)
+		<-inform
 
 		actualErr := listener.Shutdown(ctx)
 		assert.Nil(t, actualErr)
