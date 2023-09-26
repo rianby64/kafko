@@ -4,21 +4,20 @@ import (
 	"context"
 	"testing"
 
-	"github.com/m3co/kafko"
-	"github.com/m3co/kafko/log"
-	"github.com/segmentio/kafka-go"
+	"kafko"
+	"kafko/log"
+	"kafko/mocks"
+
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
-
-type MockListenerMsgHangler_OK struct { //nolint:revive,stylecheck
-}
-
-func (MockListenerMsgHangler_OK) Handle(context.Context, *kafka.Message) error {
-	return nil
-}
 
 func Test_Listener_OK(t *testing.T) {
 	t.Parallel()
+
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
 
 	waitUntilTheEnd := make(chan struct{}, 1)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -26,8 +25,18 @@ func Test_Listener_OK(t *testing.T) {
 	defer cancel()
 
 	actualLog := log.NewMockLogger()
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
 
-	listener := kafko.NewListener(actualLog, kafko.NewOptionsListener().WithHandler(new(MockListenerMsgHangler_OK)))
+	mockReader.EXPECT().Close().Return(nil)
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
 
 	go func(t *testing.T) {
 		t.Helper()

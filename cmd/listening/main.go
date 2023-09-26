@@ -6,10 +6,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	"kafko"
+	"kafko/log"
+
 	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
-	"github.com/m3co/kafko"
-	"github.com/m3co/kafko/log"
 	"github.com/segmentio/kafka-go"
 )
 

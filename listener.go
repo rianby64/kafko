@@ -6,6 +6,7 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
+//go:generate mockgen -destination=./mocks/mock_reader.go -package=mocks kafko Reader
 type Reader interface {
 	Close() error
 	FetchMessage(ctx context.Context) (kafka.Message, error)
@@ -15,6 +16,8 @@ type Reader interface {
 type Listener struct {
 	log  Logger
 	opts *OptionsListener
+
+	reader Reader
 }
 
 // NewListener creates a new Listener instance with the provided configuration,
@@ -27,5 +30,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 	return &Listener{
 		log:  log,
 		opts: finalOpts,
+
+		reader: finalOpts.readerFactory(),
 	}
 }

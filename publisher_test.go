@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/m3co/kafko"
-	"github.com/m3co/kafko/log"
+	"kafko"
+	"kafko/log"
+
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 )

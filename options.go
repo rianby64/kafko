@@ -13,6 +13,7 @@ var (
 	ErrResourceUnavailable = errors.New("resource unavailable")
 )
 
+//go:generate mockgen -destination=./mocks/mock_msg_handler.go -package=mocks kafko MsgHandler
 type MsgHandler interface {
 	Handle(ctx context.Context, msg *kafka.Message) error
 }
