@@ -18,6 +18,8 @@ type Listener struct {
 	opts *OptionsListener
 
 	reader Reader
+
+	shutdownChan chan struct{}
 }
 
 // NewListener creates a new Listener instance with the provided configuration,
@@ -32,5 +34,7 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 		opts: finalOpts,
 
 		reader: finalOpts.readerFactory(),
+
+		shutdownChan: make(chan struct{}, 1),
 	}
 }
