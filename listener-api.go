@@ -24,34 +24,41 @@ func (listener *Listener) shouldExitListen(ctx context.Context) bool {
 // Listen starts the Listener to fetch and process messages from the Kafka topic.
 // It also starts the commit loop and handles message errors.
 func (listener *Listener) Listen(ctx context.Context) error {
-	for listener.shouldContinueListen(ctx) {
-		msg, err := listener.reader.FetchMessage(ctx)
+	ctxFinal, cancel := context.WithCancel(ctx)
+	listener.cancel = cancel
+
+	for listener.shouldContinueListen(ctxFinal) {
+		msg, err := listener.reader.FetchMessage(ctxFinal)
 		if err != nil {
 			return errors.Wrap(err, "cannot fetch message")
 		}
 
-		if listener.shouldExitListen(ctx) { // this looks rather a hack
+		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
 			break
 		}
 
-		if err := listener.opts.processMsg.Handle(ctx, &msg); err != nil {
+		if err := listener.opts.processMsg.Handle(ctxFinal, &msg); err != nil {
 			return errors.Wrap(err, "cannot handle message")
 		}
 
-		if listener.shouldExitListen(ctx) { // this looks rather a hack
+		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
 			break
 		}
 
-		if err := listener.reader.CommitMessages(ctx, msg); err != nil {
+		if err := listener.reader.CommitMessages(ctxFinal, msg); err != nil {
 			return errors.Wrap(err, "cannot commit message")
 		}
 
-		if listener.shouldExitListen(ctx) { // this looks rather a hack
+		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
 			break
 		}
 	}
 
-	return errors.Wrap(ctx.Err(), "listen stopped")
+	if _, ok := <-listener.shutdownChan; !ok {
+		return nil
+	}
+
+	return errors.Wrap(ctxFinal.Err(), "listen stopped")
 }
 
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
@@ -60,6 +67,8 @@ func (listener *Listener) Shutdown(ctx context.Context) error {
 	errChan := make(chan error, 1)
 
 	close(listener.shutdownChan)
+
+	defer listener.cancel()
 
 	go func() {
 		if err := listener.reader.Close(); err != nil {

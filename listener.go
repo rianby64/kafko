@@ -20,6 +20,7 @@ type Listener struct {
 	reader Reader
 
 	shutdownChan chan struct{}
+	cancel       context.CancelFunc
 }
 
 // NewListener creates a new Listener instance with the provided configuration,

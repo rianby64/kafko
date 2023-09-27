@@ -14,14 +14,34 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
+type contextMatcher struct {
+	ctx context.Context //nolint:containedctx
+}
+
+func (matcher contextMatcher) Matches(ctxAny any) bool {
+	_, isContext := ctxAny.(context.Context)
+
+	return isContext
+}
+
+func (matcher contextMatcher) String() string {
+	return ""
+}
+
+func newContextMatcher(ctx context.Context) *contextMatcher {
+	return &contextMatcher{
+		ctx: ctx,
+	}
+}
+
 func Test_Listener_OK(t *testing.T) { //nolint:funlen
 	t.Parallel()
 
 	waitUntilTheEnd := make(chan struct{}, 1)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx := context.Background()
 	ctl := gomock.NewController(t)
+	ctxMatcher := newContextMatcher(ctx)
 
-	defer cancel()
 	defer ctl.Finish()
 
 	mockMessage := kafka.Message{
@@ -35,23 +55,28 @@ func Test_Listener_OK(t *testing.T) { //nolint:funlen
 
 	gomock.InOrder(
 		mockReader.EXPECT().
-			FetchMessage(ctx).
+			FetchMessage(ctxMatcher).
 			Return(mockMessage, nil),
 
 		mockHandler.EXPECT().
-			Handle(ctx, &mockMessage).
+			Handle(ctxMatcher, &mockMessage).
 			Return(nil),
 
 		mockReader.EXPECT().
-			CommitMessages(ctx, mockMessage).
+			CommitMessages(ctxMatcher, mockMessage).
 			Return(nil),
 
 		mockReader.EXPECT().
-			FetchMessage(ctx).
+			FetchMessage(ctxMatcher).
 			Do(func(ctx context.Context) {
 				inform <- struct{}{}
 
-				time.Sleep(time.Millisecond)
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Hour):
+					return
+				}
 			}).
 			Return(mockMessage, nil),
 	)
