@@ -38,19 +38,13 @@ func (listener *Listener) Listen(ctx context.Context) error {
 		}
 
 		if err := listener.opts.processMsg.Handle(ctxFinal, &msg); err != nil {
-			return errors.Wrap(err, "cannot handle message")
-		}
-
-		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
-			break
+			if err := listener.opts.processDroppedMsg.Handle(ctxFinal, &msg); err != nil {
+				return errors.Wrap(err, "cannot handle message")
+			}
 		}
 
 		if err := listener.reader.CommitMessages(ctxFinal, msg); err != nil {
 			return errors.Wrap(err, "cannot commit message")
-		}
-
-		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
-			break
 		}
 	}
 

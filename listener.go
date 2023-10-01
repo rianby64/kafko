@@ -14,7 +14,6 @@ type Reader interface {
 }
 
 type Listener struct {
-	log  Logger
 	opts *OptionsListener
 
 	reader Reader
@@ -31,7 +30,6 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 	// Create and return a new Listener instance with the final configuration,
 	// channels, and options.
 	return &Listener{
-		log:  log,
 		opts: finalOpts,
 
 		reader: finalOpts.readerFactory(),
