@@ -32,8 +32,6 @@ func NewListener(log Logger, opts ...*OptionsListener) *Listener {
 	return &Listener{
 		opts: finalOpts,
 
-		reader: finalOpts.readerFactory(),
-
 		shutdownChan: make(chan struct{}, 1),
 	}
 }

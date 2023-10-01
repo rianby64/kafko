@@ -26,6 +26,9 @@ func (listener *Listener) shouldExitListen(ctx context.Context) bool {
 func (listener *Listener) Listen(ctx context.Context) error {
 	ctxFinal, cancel := context.WithCancel(ctx)
 	listener.cancel = cancel
+	listener.reader = listener.opts.readerFactory()
+
+	defer cancel()
 
 	for listener.shouldContinueListen(ctxFinal) {
 		msg, err := listener.reader.FetchMessage(ctxFinal)
@@ -33,7 +36,7 @@ func (listener *Listener) Listen(ctx context.Context) error {
 			return errors.Wrap(err, "cannot fetch message")
 		}
 
-		if listener.shouldExitListen(ctxFinal) { // this looks rather a hack
+		if listener.shouldExitListen(ctxFinal) {
 			break
 		}
 
