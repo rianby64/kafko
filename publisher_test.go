@@ -98,7 +98,8 @@ func Test_Case_OK_noClose_oneMessage_WriteMessages(t *testing.T) {
 }
 
 var (
-	errRandomError = errors.New("a random error")
+	errClose  = errors.New("a close error")
+	errRandom = errors.New("a random error")
 )
 
 type MockWriter_caseNoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecondTime struct { //nolint:revive,stylecheck
@@ -118,7 +119,7 @@ func (w *MockWriter_caseNoErrCloseAppendAtWriteMessagesFailFirstTimeSuccessSecon
 	if w.attemptNumber == 0 {
 		w.attemptNumber++
 
-		return errRandomError
+		return errRandom
 	}
 
 	w.writtenMsgs = append(w.writtenMsgs, msgs...)
@@ -158,7 +159,7 @@ func Test_Case_OK_WriteMessages_failedFirstAttempt_successSecondAttempt(t *testi
 	expectedErr := error(nil)
 	actualErr := publisher.Publish(ctx, payload)
 
-	expectedLog.Errorf(errRandomError, "cannot write message to Kafka")
+	expectedLog.Errorf(errRandom, "cannot write message to Kafka")
 
 	assert.Equal(t, expectedErr, actualErr)
 	assert.Equal(t, expectedWriter, actualWriter)
@@ -178,7 +179,7 @@ func (w *MockWriter_caseFailFirstAndOthersFailToo) WriteMessages(ctx context.Con
 
 	defer cancel()
 
-	return errRandomError // We've to log, just to log this error, then move on with the strategy and on and on...
+	return errRandom // We've to log, just to log this error, then move on with the strategy and on and on...
 }
 
 type backoffStrategy_Case_Fail_FirstAttempt_and_OthersFailToo struct{} //nolint:revive,stylecheck
@@ -194,7 +195,7 @@ type MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo struc
 func (m *MockProcessDroppedMsgHandler_Case_Fail_FirstAttempt_and_OthersFailToo) Handle(_ context.Context, _ *kafka.Message) error {
 	m.calledOnceTheProcessDroppedMsg = true
 
-	return errRandomError
+	return errRandom
 }
 
 func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
@@ -236,10 +237,10 @@ func Test_Case_Fail_FirstAttempt_and_OthersFailToo(t *testing.T) {
 
 	<-waitForFirstFail
 
-	expectedErr := errRandomError
+	expectedErr := errRandom
 	actualErr := publisher.Publish(ctx, payload)
 
-	expectedLog.Errorf(errRandomError, "cannot write message to Kafka")
+	expectedLog.Errorf(errRandom, "cannot write message to Kafka")
 
 	assert.ErrorIs(t, actualErr, expectedErr)
 	assert.Equal(t, expectedWriter, actualWriter)
@@ -269,7 +270,7 @@ type MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDo
 func (m *MockProcessDroppedMsgHandler_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail) Handle(_ context.Context, _ *kafka.Message) error {
 	m.calledProcessDroppedMsg++
 
-	return errRandomError
+	return errRandom
 }
 
 func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *testing.T) {
@@ -293,7 +294,7 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 
 	waitGroup.Add(NumberOfAttempts - 1) // one of the attempts will fall into a infinity loop, so do not count int.
 
-	expectedErr := errRandomError
+	expectedErr := errRandom
 	failedPublish := 0
 	failedPublishChan := make(chan struct{}, NumberOfAttempts)
 

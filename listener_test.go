@@ -132,7 +132,7 @@ func listener_Handler_Err_case1_setup(ctx context.Context, ctl *gomock.Controlle
 
 		mockHandler.EXPECT().
 			Handle(ctxMatcher, &mockMessage).
-			Return(errRandomError),
+			Return(errRandom),
 
 		mockReader.EXPECT().
 			Close().
@@ -161,5 +161,248 @@ func Test_Listener_Handler_Err_case1(t *testing.T) {
 
 	listener := kafko.NewListener(actualLog, opts)
 	actualErr := listener.Listen(ctx)
-	assert.ErrorIs(t, actualErr, errRandomError)
+	assert.ErrorIs(t, actualErr, errRandom)
+}
+
+func listener_Handler_Err_case2_setup(ctx context.Context, ctl *gomock.Controller) (*mocks.MockMsgHandler, *mocks.MockReader) { //nolint:revive,stylecheck
+	mockMessage := kafka.Message{
+		Value: []byte("mocked message"),
+	}
+
+	ctxMatcher := newContextMatcher(ctx)
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
+
+	gomock.InOrder(
+		mockReader.EXPECT().
+			FetchMessage(ctxMatcher).
+			Return(mockMessage, nil),
+
+		mockHandler.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(errRandom),
+
+		mockReader.EXPECT().
+			Close().
+			Return(errClose),
+	)
+
+	return mockHandler, mockReader
+}
+
+func Test_Listener_Handler_Err_case2(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
+
+	mockHandler, mockReader := listener_Handler_Err_case2_setup(ctx, ctl)
+	actualLog := log.NewMockLogger()
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
+	actualErr := listener.Listen(ctx)
+	assert.ErrorIs(t, actualErr, errRandom)
+	assert.ErrorIs(t, actualErr, errClose)
+}
+
+func listener_Fetch_Err_case1_setup(ctx context.Context, ctl *gomock.Controller) (*mocks.MockMsgHandler, *mocks.MockReader) { //nolint:revive,stylecheck
+	mockMessage := kafka.Message{
+		Value: []byte("mocked message"),
+	}
+
+	ctxMatcher := newContextMatcher(ctx)
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
+
+	gomock.InOrder(
+		mockReader.EXPECT().
+			FetchMessage(ctxMatcher).
+			Return(mockMessage, errRandom),
+
+		mockReader.EXPECT().
+			Close().
+			Return(nil),
+	)
+
+	return mockHandler, mockReader
+}
+
+func Test_Listener_Fetch_Err_case1(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
+
+	mockHandler, mockReader := listener_Fetch_Err_case1_setup(ctx, ctl)
+	actualLog := log.NewMockLogger()
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
+	actualErr := listener.Listen(ctx)
+	assert.ErrorIs(t, actualErr, errRandom)
+}
+
+func listener_Fetch_Err_case2_setup(ctx context.Context, ctl *gomock.Controller) (*mocks.MockMsgHandler, *mocks.MockReader) { //nolint:revive,stylecheck
+	mockMessage := kafka.Message{
+		Value: []byte("mocked message"),
+	}
+
+	ctxMatcher := newContextMatcher(ctx)
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
+
+	gomock.InOrder(
+		mockReader.EXPECT().
+			FetchMessage(ctxMatcher).
+			Return(mockMessage, errRandom),
+
+		mockReader.EXPECT().
+			Close().
+			Return(errClose),
+	)
+
+	return mockHandler, mockReader
+}
+
+func Test_Listener_Fetch_Err_case2(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
+
+	mockHandler, mockReader := listener_Fetch_Err_case2_setup(ctx, ctl)
+	actualLog := log.NewMockLogger()
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
+	actualErr := listener.Listen(ctx)
+	assert.ErrorIs(t, actualErr, errRandom)
+	assert.ErrorIs(t, actualErr, errClose)
+}
+
+func listener_Commit_Err_case1_setup(ctx context.Context, ctl *gomock.Controller) (*mocks.MockMsgHandler, *mocks.MockReader) { //nolint:revive,stylecheck
+	mockMessage := kafka.Message{
+		Value: []byte("mocked message"),
+	}
+
+	ctxMatcher := newContextMatcher(ctx)
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
+
+	gomock.InOrder(
+		mockReader.EXPECT().
+			FetchMessage(ctxMatcher).
+			Return(mockMessage, nil),
+
+		mockHandler.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(nil),
+
+		mockReader.EXPECT().
+			CommitMessages(ctxMatcher, mockMessage).
+			Return(errRandom),
+
+		mockReader.EXPECT().
+			Close().
+			Return(nil),
+	)
+
+	return mockHandler, mockReader
+}
+
+func Test_Listener_Commit_Err_case1(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
+
+	mockHandler, mockReader := listener_Commit_Err_case1_setup(ctx, ctl)
+	actualLog := log.NewMockLogger()
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
+	actualErr := listener.Listen(ctx)
+	assert.ErrorIs(t, actualErr, errRandom)
+}
+
+func listener_Commit_Err_case2_setup(ctx context.Context, ctl *gomock.Controller) (*mocks.MockMsgHandler, *mocks.MockReader) { //nolint:revive,stylecheck
+	mockMessage := kafka.Message{
+		Value: []byte("mocked message"),
+	}
+
+	ctxMatcher := newContextMatcher(ctx)
+	mockHandler := mocks.NewMockMsgHandler(ctl)
+	mockReader := mocks.NewMockReader(ctl)
+
+	gomock.InOrder(
+		mockReader.EXPECT().
+			FetchMessage(ctxMatcher).
+			Return(mockMessage, nil),
+
+		mockHandler.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(nil),
+
+		mockReader.EXPECT().
+			CommitMessages(ctxMatcher, mockMessage).
+			Return(errRandom),
+
+		mockReader.EXPECT().
+			Close().
+			Return(errClose),
+	)
+
+	return mockHandler, mockReader
+}
+
+func Test_Listener_Commit_Err_case2(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	ctl := gomock.NewController(t)
+
+	defer ctl.Finish()
+
+	mockHandler, mockReader := listener_Commit_Err_case2_setup(ctx, ctl)
+	actualLog := log.NewMockLogger()
+
+	opts := kafko.NewOptionsListener().
+		WithHandler(mockHandler).
+		WithReaderFactory(func() kafko.Reader {
+			return mockReader
+		})
+
+	listener := kafko.NewListener(actualLog, opts)
+	actualErr := listener.Listen(ctx)
+	assert.ErrorIs(t, actualErr, errRandom)
+	assert.ErrorIs(t, actualErr, errClose)
 }

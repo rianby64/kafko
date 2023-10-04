@@ -32,11 +32,7 @@ func (listener *Listener) Listen(ctx context.Context) error {
 	for listener.shouldContinueListen(ctxFinal) {
 		msg, err := listener.reader.FetchMessage(ctxFinal)
 		if err != nil {
-			if errClose := listener.closeReader(ctx); errClose != nil {
-				return errors.Wrap(errorsStd.Join(err, errClose), "cannot fetch message")
-			}
-
-			return errors.Wrap(err, "cannot fetch message")
+			return errors.Wrap(errorsStd.Join(err, listener.closeReader(ctx)), "cannot fetch message")
 		}
 
 		if listener.shouldExitListen(ctxFinal) {
@@ -44,19 +40,11 @@ func (listener *Listener) Listen(ctx context.Context) error {
 		}
 
 		if err := listener.opts.processMsg.Handle(ctxFinal, &msg); err != nil {
-			if errClose := listener.closeReader(ctx); errClose != nil {
-				return errors.Wrap(errorsStd.Join(err, errClose), "cannot handle message")
-			}
-
-			return errors.Wrap(err, "cannot handle message")
+			return errors.Wrap(errorsStd.Join(err, listener.closeReader(ctx)), "cannot handle message")
 		}
 
 		if err := listener.reader.CommitMessages(ctxFinal, msg); err != nil {
-			if errClose := listener.closeReader(ctx); errClose != nil {
-				return errors.Wrap(errorsStd.Join(err, errClose), "cannot commit message")
-			}
-
-			return errors.Wrap(err, "cannot commit message")
+			return errors.Wrap(errorsStd.Join(err, listener.closeReader(ctx)), "cannot commit message")
 		}
 	}
 
