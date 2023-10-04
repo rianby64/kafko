@@ -2,11 +2,10 @@ package kafko
 
 // OptionsListener is a configuration struct for a Kafka consumer.
 type OptionsListener struct {
-	processDroppedMsg MsgHandler    // Handler function to process dropped messages.
-	readerFactory     ReaderFactory // Factory function to create Reader instances.
+	readerFactory ReaderFactory // Factory function to create Reader instances.
 
 	metricMessagesProcessed Incrementer // Incrementer for the number of processed messages.
-	metricMessagesDropped   Incrementer // Incrementer for the number of dropped messages.
+	metricMessagesError     Incrementer // Incrementer for the number of dropped messages.
 	metricErrors            Incrementer // Incrementer for the number of Kafka errors.
 	metricDurationProcess   Duration    // Observer for the duration of processing a kafka message.
 
@@ -15,14 +14,6 @@ type OptionsListener struct {
 
 func (opts *OptionsListener) WithDurationProcess(metric Duration) *OptionsListener {
 	opts.metricDurationProcess = metric
-
-	return opts
-}
-
-// WithProcessDroppedMsg sets the dropped message processing handler for the Options instance.
-// Returns the updated Options instance for method chaining.
-func (opts *OptionsListener) WithProcessDroppedMsg(processDroppedMsg MsgHandler) *OptionsListener {
-	opts.processDroppedMsg = processDroppedMsg
 
 	return opts
 }
@@ -46,7 +37,7 @@ func (opts *OptionsListener) WithMetricMessagesProcessed(metric Incrementer) *Op
 // WithMetricMessagesDropped sets the messages dropped incrementer for the Options instance.
 // Returns the updated Options instance for method chaining.
 func (opts *OptionsListener) WithMetricMessagesDropped(metric Incrementer) *OptionsListener {
-	opts.metricMessagesDropped = metric
+	opts.metricMessagesError = metric
 
 	return opts
 }
@@ -73,7 +64,6 @@ func NewOptionsListener() *OptionsListener {
 func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListener {
 	// Set the default options.
 	finalOpts := &OptionsListener{
-		processDroppedMsg: new(defaultProcessDroppedMsg),
 		readerFactory: func() Reader {
 			log.Panicf(ErrResourceUnavailable, "provide the reader")
 
@@ -81,7 +71,7 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 		},
 
 		metricMessagesProcessed: new(nopIncrementer),
-		metricMessagesDropped:   new(nopIncrementer),
+		metricMessagesError:     new(nopIncrementer),
 		metricErrors:            new(nopIncrementer),
 		metricDurationProcess:   new(nopDuration),
 
@@ -90,10 +80,6 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 
 	// Iterate through the provided custom options and override defaults if needed.
 	for _, opt := range opts {
-		if opt.processDroppedMsg != nil {
-			finalOpts.processDroppedMsg = opt.processDroppedMsg
-		}
-
 		if opt.readerFactory != nil {
 			finalOpts.readerFactory = opt.readerFactory
 		}
@@ -102,8 +88,8 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 			finalOpts.metricMessagesProcessed = opt.metricMessagesProcessed
 		}
 
-		if opt.metricMessagesDropped != nil {
-			finalOpts.metricMessagesDropped = opt.metricMessagesDropped
+		if opt.metricMessagesError != nil {
+			finalOpts.metricMessagesError = opt.metricMessagesError
 		}
 
 		if opt.metricErrors != nil {

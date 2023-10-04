@@ -2,6 +2,7 @@ package kafko
 
 import (
 	"context"
+	errorsStd "errors"
 
 	"github.com/pkg/errors"
 )
@@ -28,11 +29,13 @@ func (listener *Listener) Listen(ctx context.Context) error {
 	listener.cancel = cancel
 	listener.reader = listener.opts.readerFactory()
 
-	defer cancel()
-
 	for listener.shouldContinueListen(ctxFinal) {
 		msg, err := listener.reader.FetchMessage(ctxFinal)
 		if err != nil {
+			if errClose := listener.closeReader(ctx); errClose != nil {
+				return errors.Wrap(errorsStd.Join(err, errClose), "cannot fetch message")
+			}
+
 			return errors.Wrap(err, "cannot fetch message")
 		}
 
@@ -41,12 +44,18 @@ func (listener *Listener) Listen(ctx context.Context) error {
 		}
 
 		if err := listener.opts.processMsg.Handle(ctxFinal, &msg); err != nil {
-			if err := listener.opts.processDroppedMsg.Handle(ctxFinal, &msg); err != nil {
-				return errors.Wrap(err, "cannot handle message")
+			if errClose := listener.closeReader(ctx); errClose != nil {
+				return errors.Wrap(errorsStd.Join(err, errClose), "cannot handle message")
 			}
+
+			return errors.Wrap(err, "cannot handle message")
 		}
 
 		if err := listener.reader.CommitMessages(ctxFinal, msg); err != nil {
+			if errClose := listener.closeReader(ctx); errClose != nil {
+				return errors.Wrap(errorsStd.Join(err, errClose), "cannot commit message")
+			}
+
 			return errors.Wrap(err, "cannot commit message")
 		}
 	}
@@ -61,26 +70,23 @@ func (listener *Listener) Listen(ctx context.Context) error {
 // Shutdown gracefully shuts down the Listener, committing any uncommitted messages
 // and closing the Kafka reader.
 func (listener *Listener) Shutdown(ctx context.Context) error {
-	errChan := make(chan error, 1)
-
 	close(listener.shutdownChan)
 
 	defer listener.cancel()
 
+	return listener.closeReader(ctx)
+}
+
+func (listener *Listener) closeReader(ctx context.Context) error {
+	errChan := make(chan error, 1)
 	go func() {
-		if err := listener.reader.Close(); err != nil {
-			errChan <- errors.Wrap(err, "cannot close reader")
-
-			return
-		}
-
-		errChan <- nil
+		errChan <- listener.reader.Close()
 	}()
 
 	select {
 	case <-ctx.Done():
-		return errors.Wrap(ctx.Err(), "shutdown")
+		return errors.Wrap(ctx.Err(), "context done")
 	case err := <-errChan:
-		return errors.Wrap(err, "shutdown")
+		return errors.Wrap(err, "cannot close reader")
 	}
 }
