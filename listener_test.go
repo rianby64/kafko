@@ -65,8 +65,8 @@ func listener_OK_setup(ctx context.Context, ctl *gomock.Controller) (chan struct
 				select {
 				case <-ctx.Done():
 					return
-				case <-time.After(time.Hour):
-					return
+				case <-time.After(time.Second):
+					panic("not expected")
 				}
 			}).
 			Return(mockMessage, nil),

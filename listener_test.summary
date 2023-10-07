@@ -1,0 +1,104 @@
+Test_Listener_OK:
+  // Here I expect the positive execution of the listen method
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> OK
+-    Commit msg      -> OK
+-    Fetch           -> blocks and sends a signal to call Shutdown
+-    Reader.Close    -> OK
+-    Context cancels -> OK
+-    Listen breaks   -> returns no error since Shutdown has been called -> OK
+- <: END
+
+
+
+Test_Listener_Handler_Err_case1:
+  // Here I expect that Handle msg fails with ErrRandom so Listen fails too.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> returns ErrRandom
+-    Reader.Close    -> OK
+-    Listen breaks   -> returns ErrRandom as Handle failed with that error -> OK
+- <: END
+
+
+
+Test_Listener_Handler_Err_case2:
+  // Here I expect that Handle msg fails with ErrRandom and
+  // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> returns ErrRandom
+-    Reader.Close    -> returns ErrClose
+-    Listen breaks   -> returns join(ErrRandom, ErrClose) as Handle and
+                        Reader.Close failed with theses errors -> OK
+- <: END
+
+
+
+Test_Listener_Fetch_Err_case1:
+  // Here I expect that Fetch msg fails with ErrRandom so Listen fails too.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> returns ErrRandom
+-    Reader.Close    -> OK
+-    Listen breaks   -> returns ErrRandom as Fetch failed with that error -> OK
+- <: END
+
+
+
+Test_Listener_Fetch_Err_case2:
+  // Here I expect that Fetch msg fails with ErrRandom and
+  // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> returns ErrRandom
+-    Reader.Close    -> returns ErrClose
+-    Listen breaks   -> returns join(ErrRandom, ErrClose) as Fetch and
+                        Reader.Close failed with theses errors -> OK
+- <: END
+
+
+
+Test_Listener_Commit_Err_case1:
+  // Here I expect that Commit msg fails with ErrRandom so Listen fails too.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> OK
+-    Commit msg      -> returns ErrRandom
+-    Reader.Close    -> OK
+-    Listen breaks   -> returns ErrRandom as Commit failed with that error -> OK
+- <: END
+
+
+
+Test_Listener_Commit_Err_case2:
+  // Here I expect that Commit msg fails with ErrRandom and
+  // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> OK
+-    Commit msg      -> returns ErrRandom
+-    Reader.Close    -> returns ErrClose
+-    Listen breaks   -> returns join(ErrRandom, ErrClose) as Commit and
+                        Reader.Close failed with theses errors -> OK
+- <: END
+
+
+It's required to test the case when te listener breaks and we call it again so
+the handler will receive messages regardless the restaring of the listener...
+So, first loop creates a Reader via factory, the listener breaks for any given reason
+then you call the second time Listen and it successfully returns a new msg, then
+this fetched message is processed by the handler, then you may want to call Shutdown.
