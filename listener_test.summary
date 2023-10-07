@@ -102,16 +102,59 @@ Test_reListen_reason_Fetch_err:
   // Here I expect the one failed listen loop, then a second OK listen loop
   // TODO: Add metrics
 - :> START
--    Call Listen     -> it blocks as expected
--    Fetch msg       -> returns ErrRandom
--    Reader1.Close   -> OK
--    Listen breaks   -> returns ErrRandom
--    Call Listen     -> it blocks as expected
--    Fetch msg       -> OK
--    Handle msg      -> OK
--    Commit msg      -> OK
--    Fetch           -> blocks and sends a signal to call Shutdown
--    Reader2.Close    -> OK
--    Context cancels -> OK
--    Listen breaks   -> returns no error since Shutdown has been called -> OK
+-    Call Listen         -> it blocks as expected
+-    Reader1.Fetch msg   -> returns ErrRandom
+-    Reader1.Close       -> OK
+-    Listen breaks       -> returns ErrRandom
+-    Call Listen         -> it blocks as expected
+-    Reader2.Fetch msg   -> OK
+-    Handle msg          -> OK
+-    Reader2.Commit msg  -> OK
+-    Reader2.Fetch       -> blocks and sends a signal to call Shutdown
+-    Reader2.Close       -> OK
+-    Context cancels     -> OK
+-    Listen breaks       -> returns no error since Shutdown has been called -> OK
+- <: END
+
+
+
+Test_reListen_reason_Handler_err:
+  // Here I expect the one failed listen loop, then a second OK listen loop
+  // TODO: Add metrics
+- :> START
+-    Call Listen         -> it blocks as expected
+-    Reader1.Fetch msg   -> OK
+-    Handle msg          -> returns ErrRandom
+-    Reader1.Close       -> OK
+-    Listen breaks       -> returns ErrRandom
+-    Call Listen         -> it blocks as expected
+-    Reader2.Fetch msg   -> OK
+-    Handle msg          -> OK
+-    Reader2.Commit msg  -> OK
+-    Reader2.Fetch       -> blocks and sends a signal to call Shutdown
+-    Reader2.Close       -> OK
+-    Context cancels     -> OK
+-    Listen breaks       -> returns no error since Shutdown has been called -> OK
+- <: END
+
+
+
+Test_reListen_reason_Commit_err:
+  // Here I expect the one failed listen loop, then a second OK listen loop
+  // TODO: Add metrics
+- :> START
+-    Call Listen         -> it blocks as expected
+-    Reader1.Fetch msg   -> OK
+-    Handle msg          -> OK
+-    Reader1.Commit msg  -> returns ErrRandom
+-    Reader1.Close       -> OK
+-    Listen breaks       -> returns ErrRandom
+-    Call Listen         -> it blocks as expected
+-    Reader2.Fetch msg   -> OK
+-    Handle msg          -> OK
+-    Reader2.Commit msg  -> OK
+-    Reader2.Fetch       -> blocks and sends a signal to call Shutdown
+-    Reader2.Close       -> OK
+-    Context cancels     -> OK
+-    Listen breaks       -> returns no error since Shutdown has been called -> OK
 - <: END
