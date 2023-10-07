@@ -97,8 +97,21 @@ Test_Listener_Commit_Err_case2:
 - <: END
 
 
-It's required to test the case when te listener breaks and we call it again so
-the handler will receive messages regardless the restaring of the listener...
-So, first loop creates a Reader via factory, the listener breaks for any given reason
-then you call the second time Listen and it successfully returns a new msg, then
-this fetched message is processed by the handler, then you may want to call Shutdown.
+
+Test_reListen_reason_Fetch_err:
+  // Here I expect the one failed listen loop, then a second OK listen loop
+  // TODO: Add metrics
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> returns ErrRandom
+-    Reader1.Close   -> OK
+-    Listen breaks   -> returns ErrRandom
+-    Call Listen     -> it blocks as expected
+-    Fetch msg       -> OK
+-    Handle msg      -> OK
+-    Commit msg      -> OK
+-    Fetch           -> blocks and sends a signal to call Shutdown
+-    Reader2.Close    -> OK
+-    Context cancels -> OK
+-    Listen breaks   -> returns no error since Shutdown has been called -> OK
+- <: END
