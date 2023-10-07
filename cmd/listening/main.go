@@ -5,11 +5,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"kafko"
+	"kafko/log"
 
 	"github.com/caarlos0/env/v9"
 	"github.com/segmentio/kafka-go"
-	"kafko"
-	"kafko/log"
 )
 
 type Config struct {
@@ -59,12 +61,24 @@ func main() {
 	consumer := kafko.NewListener(log, opts)
 
 	go func() {
-		ctx, cancel := context.WithCancel(context.Background())
+		for {
+			select {
+			case <-shutdown:
+				log.Printf("shutted down")
 
-		defer cancel()
+			default:
+				log.Printf("starting listening")
+			}
 
-		if err := consumer.Listen(ctx); err != nil {
-			log.Errorf(err, "err := consumer.Listen(context.Background())")
+			ctx, cancel := context.WithCancel(context.Background())
+
+			if err := consumer.Listen(ctx); err != nil {
+				log.Errorf(err, "err := consumer.Listen(context.Background())")
+			}
+
+			cancel()
+
+			time.Sleep(time.Second)
 		}
 	}()
 
