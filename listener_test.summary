@@ -1,6 +1,5 @@
 Test_Listener_OK:
   // Here I expect the positive execution of the listen method
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> OK
@@ -16,7 +15,6 @@ Test_Listener_OK:
 
 Test_Listener_Handler_Err_case1:
   // Here I expect that Handle msg fails with ErrRandom so Listen fails too.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> OK
@@ -30,7 +28,6 @@ Test_Listener_Handler_Err_case1:
 Test_Listener_Handler_Err_case2:
   // Here I expect that Handle msg fails with ErrRandom and
   // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> OK
@@ -44,7 +41,6 @@ Test_Listener_Handler_Err_case2:
 
 Test_Listener_Fetch_Err_case1:
   // Here I expect that Fetch msg fails with ErrRandom so Listen fails too.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> returns ErrRandom
@@ -57,7 +53,6 @@ Test_Listener_Fetch_Err_case1:
 Test_Listener_Fetch_Err_case2:
   // Here I expect that Fetch msg fails with ErrRandom and
   // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> returns ErrRandom
@@ -70,7 +65,6 @@ Test_Listener_Fetch_Err_case2:
 
 Test_Listener_Commit_Err_case1:
   // Here I expect that Commit msg fails with ErrRandom so Listen fails too.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> OK
@@ -85,7 +79,6 @@ Test_Listener_Commit_Err_case1:
 Test_Listener_Commit_Err_case2:
   // Here I expect that Commit msg fails with ErrRandom and
   // Reader.Close fails with ErrClose so Listen fails too with these two errors joined.
-  // TODO: Add metrics
 - :> START
 -    Call Listen     -> it blocks as expected
 -    Fetch msg       -> OK
@@ -100,7 +93,6 @@ Test_Listener_Commit_Err_case2:
 
 Test_reListen_reason_Fetch_err:
   // Here I expect the one failed listen loop, then a second OK listen loop
-  // TODO: Add metrics
 - :> START
 -    Call Listen         -> it blocks as expected
 -    Reader1.Fetch msg   -> returns ErrRandom
@@ -120,7 +112,6 @@ Test_reListen_reason_Fetch_err:
 
 Test_reListen_reason_Handler_err:
   // Here I expect the one failed listen loop, then a second OK listen loop
-  // TODO: Add metrics
 - :> START
 -    Call Listen         -> it blocks as expected
 -    Reader1.Fetch msg   -> OK
@@ -141,7 +132,6 @@ Test_reListen_reason_Handler_err:
 
 Test_reListen_reason_Commit_err:
   // Here I expect the one failed listen loop, then a second OK listen loop
-  // TODO: Add metrics
 - :> START
 -    Call Listen         -> it blocks as expected
 -    Reader1.Fetch msg   -> OK

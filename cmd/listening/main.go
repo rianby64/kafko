@@ -62,10 +62,11 @@ func main() {
 
 	go func() {
 		ctx, cancel := context.WithCancel(context.Background())
+
 		defer cancel()
 
 		if err := consumer.Listen(ctx); err != nil {
-			log.Panicf(err, "err := consumer.Listen(context.Background())")
+			log.Errorf(err, "err := consumer.Listen(context.Background())")
 		}
 	}()
 

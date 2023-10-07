@@ -8,6 +8,7 @@ type OptionsListener struct {
 	metricMessagesError     Incrementer // Incrementer for the number of dropped messages.
 	metricErrors            Incrementer // Incrementer for the number of Kafka errors.
 	metricDurationProcess   Duration    // Observer for the duration of processing a kafka message.
+	time                    Time        // Obtain the value of time.Now() by default - testing purposes
 
 	processMsg MsgHandler // Handler function to process the message from the queue.
 }
@@ -69,6 +70,7 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 
 			return nil
 		},
+		time: &timeDefault{},
 
 		metricMessagesProcessed: new(nopIncrementer),
 		metricMessagesError:     new(nopIncrementer),
