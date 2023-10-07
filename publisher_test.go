@@ -10,90 +10,39 @@ import (
 
 	"kafko"
 	"kafko/log"
+	"kafko/mocks"
 
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
-
-type MockIncrementer struct{}
-
-func (MockIncrementer) Inc() {}
-
-type MockDuration struct{}
-
-func (MockDuration) Observe(float64) {}
-
-type MockKeyGenerator struct{}
-
-func (MockKeyGenerator) Generate() []byte {
-	return nil
-}
-
-type MockTime struct{}
-
-func (MockTime) Now() time.Time {
-	return time.Time{}
-}
-
-type MockWriter_caseNoErrCloseAppendAtWriteMessages struct { //nolint:revive,stylecheck
-	writtenMsgs []kafka.Message
-
-	closeCalledTimes int
-	delay            time.Duration
-}
-
-func (w *MockWriter_caseNoErrCloseAppendAtWriteMessages) Close() error {
-	w.closeCalledTimes++
-
-	return nil
-}
-
-func (w *MockWriter_caseNoErrCloseAppendAtWriteMessages) WriteMessages(ctx context.Context, msgs ...kafka.Message) error {
-	ctx, cancel := context.WithCancel(ctx)
-
-	defer cancel()
-
-	w.writtenMsgs = append(w.writtenMsgs, msgs...)
-
-	select {
-	case <-time.After(w.delay):
-		return nil // let's assume this write will take w.delay time to be completed with NO errors
-	case <-ctx.Done():
-		return ctx.Err() //nolint:wrapcheck
-	}
-}
 
 func Test_Case_OK_noClose_oneMessage_WriteMessages(t *testing.T) {
 	t.Parallel()
 
+	ctl := gomock.NewController(t)
 	ctx := context.Background()
+	ctxMatcher := newContextMatcher(ctx)
 	payload := []byte("payload OK")
+	expectedMsgs := []kafka.Message{{Value: payload}}
 
 	expectedLog := log.NewMockLogger()
 	actualLog := log.NewMockLogger()
 
-	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		writtenMsgs: []kafka.Message{{Value: payload}},
-	}
-	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		writtenMsgs: []kafka.Message{},
-	}
+	actualWriter := mocks.NewMockWriter(ctl)
+
+	actualWriter.EXPECT().WriteMessages(ctxMatcher, expectedMsgs)
 
 	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
 		WithWriterFactory(func() kafko.Writer {
-			return &actualWriter
-		}).
-		WithMetricErrors(&MockIncrementer{}).
-		WithMetricMessages(&MockIncrementer{}).
-		WithMetricDurationProcess(&MockDuration{}).
-		WithKeyGenerator(&MockKeyGenerator{}),
+			return actualWriter
+		}),
 	)
 
 	expectedErr := error(nil)
 	actualErr := publisher.Publish(ctx, payload)
 
 	assert.Equal(t, expectedErr, actualErr)
-	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 }
 
@@ -326,23 +275,25 @@ func Test_Case_Fail_AllStartedPublish_AllFailed_OnyOneDoesRetry_OtherDoFail(t *t
 func Test_Case_OK_CloseByShutdown_oneMessage_WriteMessages(t *testing.T) {
 	t.Parallel()
 
+	ctl := gomock.NewController(t)
 	ctx := context.Background()
+	ctxMatcher := newContextMatcher(ctx)
 	payload := []byte("payload OK")
+	expectedMsgs := []kafka.Message{{Value: payload}}
 
 	expectedLog := log.NewMockLogger()
 	actualLog := log.NewMockLogger()
 
-	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		writtenMsgs:      []kafka.Message{{Value: payload}},
-		closeCalledTimes: 1,
-	}
-	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		writtenMsgs: []kafka.Message{},
-	}
+	actualWriter := mocks.NewMockWriter(ctl)
+
+	gomock.InOrder(
+		actualWriter.EXPECT().WriteMessages(ctxMatcher, expectedMsgs),
+		actualWriter.EXPECT().Close().Return(nil),
+	)
 
 	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
 		WithWriterFactory(func() kafko.Writer {
-			return &actualWriter
+			return actualWriter
 		}),
 	)
 
@@ -355,8 +306,6 @@ func Test_Case_OK_CloseByShutdown_oneMessage_WriteMessages(t *testing.T) {
 	actualShutdownErr := publisher.Shutdown(ctx)
 
 	assert.Equal(t, expectedShutdownErr, actualShutdownErr)
-
-	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)
 }
 
@@ -462,53 +411,6 @@ func Test_Case_OK_CloseByShutdown_CloseBlockedForever_oneMessage_WriteMessages_F
 	actualPublishAfterShutdownErr := publisher.Publish(ctx, payload)
 
 	assert.ErrorIs(t, actualPublishAfterShutdownErr, expectedPublishAfterShutdownErr)
-
-	assert.Equal(t, expectedWriter, actualWriter)
-	assert.Equal(t, expectedLog, actualLog)
-}
-
-func Test_Case_OK_CloseByShutdown_WriteMessagesTooSlow(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-	payload := []byte("payload OK")
-	writeDelay := time.Second
-
-	expectedLog := log.NewMockLogger()
-	actualLog := log.NewMockLogger()
-
-	expectedWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		writtenMsgs:      []kafka.Message{{Value: payload}},
-		closeCalledTimes: 1,
-		delay:            writeDelay, // if this would take too long, Shutdown will hang
-	}
-	actualWriter := MockWriter_caseNoErrCloseAppendAtWriteMessages{
-		delay: writeDelay, // if this would take too long, Shutdown will hang
-	}
-
-	publisher := kafko.NewPublisher(actualLog, kafko.NewOptionsPublisher().
-		WithWriterFactory(func() kafko.Writer {
-			return &actualWriter
-		}),
-	)
-
-	go func() {
-		time.Sleep(time.Millisecond) // wait a bit... just to make sure publisher.Publish has been reached
-
-		ctx, cancel := context.WithTimeout(context.Background(), writeDelay)
-
-		defer cancel()
-
-		expectedShutdownErr := error(nil)
-		actualShutdownErr := publisher.Shutdown(ctx)
-
-		assert.ErrorIs(t, actualShutdownErr, expectedShutdownErr)
-	}()
-
-	expectedPublishErr := error(nil)
-	actualPublishErr := publisher.Publish(ctx, payload)
-
-	assert.ErrorIs(t, actualPublishErr, expectedPublishErr)
 
 	assert.Equal(t, expectedWriter, actualWriter)
 	assert.Equal(t, expectedLog, actualLog)

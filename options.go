@@ -77,7 +77,8 @@ func (gen *keyGeneratorDefault) Generate() []byte {
 	return nil // add an example with this piece of code: []byte(uuid.New().String())
 }
 
-type backoffStrategy interface {
+//go:generate mockgen -destination=./mocks/mock_backoff_strategy.go -package=mocks kafko BackoffStrategy
+type BackoffStrategy interface {
 	Wait(ctx context.Context)
 }
 

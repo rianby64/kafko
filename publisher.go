@@ -12,6 +12,7 @@ var (
 	ErrAlreadyClosed = errors.New("already closed")
 )
 
+//go:generate mockgen -destination=./mocks/mock_writer.go -package=mocks kafko Writer
 type Writer interface {
 	Close() error
 	WriteMessages(ctx context.Context, msgs ...kafka.Message) error

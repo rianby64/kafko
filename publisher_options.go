@@ -5,7 +5,7 @@ type OptionsPublisher struct {
 
 	writerFactory   WriterFactory
 	keyGenerator    keyGenerator
-	backoffStrategy backoffStrategy
+	backoffStrategy BackoffStrategy
 
 	metricMessages Incrementer
 	metricErrors   Incrementer
@@ -32,7 +32,7 @@ func (opts *OptionsPublisher) WithKeyGenerator(keyGenerator keyGenerator) *Optio
 	return opts
 }
 
-func (opts *OptionsPublisher) WithBackoffStrategy(backoffStrategy backoffStrategy) *OptionsPublisher {
+func (opts *OptionsPublisher) WithBackoffStrategy(backoffStrategy BackoffStrategy) *OptionsPublisher {
 	opts.backoffStrategy = backoffStrategy
 
 	return opts
