@@ -6,12 +6,10 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/caarlos0/env/v9"
+	"github.com/segmentio/kafka-go"
 	"kafko"
 	"kafko/log"
-
-	"github.com/caarlos0/env"
-	"github.com/joho/godotenv"
-	"github.com/segmentio/kafka-go"
 )
 
 type Config struct {
@@ -88,10 +86,6 @@ func main() {
 }
 
 func loadConfig(log log.Logger) Config {
-	if err := godotenv.Load(); err != nil {
-		log.Panicf(err, "err := godotenv.Load()")
-	}
-
 	cfg := Config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Panicf(err, "err := env.Parse(&cfg)")

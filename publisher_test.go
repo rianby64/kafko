@@ -8,13 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"kafko"
-	"kafko/log"
-	"kafko/mocks"
-
 	"github.com/segmentio/kafka-go"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
+	"kafko"
+	"kafko/log"
+	"kafko/mocks"
 )
 
 func Test_Case_OK_noClose_oneMessage_WriteMessages(t *testing.T) {
