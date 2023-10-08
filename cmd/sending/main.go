@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/caarlos0/env/v9"
-	"github.com/segmentio/kafka-go"
 	"kafko"
 	"kafko/log"
+
+	"github.com/caarlos0/env/v9"
+	"github.com/pkg/errors"
+	"github.com/segmentio/kafka-go"
 )
 
 const (
@@ -25,19 +27,21 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-func publishIndex(publisher *kafko.Publisher, index int, log *log.LoggerInternal) {
+func publishIndex(publisher *kafko.Publisher, index int, log *log.LoggerInternal) error {
 	payload := map[string]interface{}{
 		"id": index,
 	}
 
 	msg, err := json.Marshal(payload)
 	if err != nil {
-		panic(err)
+		log.Panicf(err, "cannot marshal")
 	}
 
 	if err := publisher.Publish(context.Background(), msg); err != nil {
-		log.Errorf(err, "cannot publish")
+		return errors.Wrap(err, "cannot publish")
 	}
+
+	return nil
 }
 
 func main() {
@@ -54,7 +58,7 @@ func main() {
 			BatchBytes:   batchBytes,
 			BatchSize:    batchSize,
 			BatchTimeout: batchTimeout,
-			Logger:       log,
+			//Logger:       log,
 		}
 
 		writer.AllowAutoTopicCreation = true
@@ -63,7 +67,6 @@ func main() {
 	})
 
 	publisher := kafko.NewPublisher(log, opts)
-
 	tasksAtOnce := make(chan struct{}, maxTaskAtOnce)
 
 	for index := 0; index < 10000000; index++ {
@@ -71,7 +74,18 @@ func main() {
 			defer func() {
 				<-tasksAtOnce
 			}()
-			publishIndex(publisher, index, log)
+
+			for {
+				err := publishIndex(publisher, index, log)
+				if err != nil {
+					log.Errorf(err, "something went wrong")
+					time.Sleep(time.Second)
+
+					continue
+				}
+
+				break
+			}
 		}(index)
 
 		tasksAtOnce <- struct{}{}

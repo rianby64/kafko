@@ -54,11 +54,14 @@ func main() {
 			Brokers:     cfg.KafkaBrokers,
 			Dialer:      kafko.NewDialer(cfg.KafkaUser, cfg.KafkaPass),
 			ErrorLogger: log,
-			Logger:      log,
+			//Logger:      log,
 		})
 	}).WithHandler(NewListenerHandler(log))
 
 	consumer := kafko.NewListener(log, opts)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	defer cancel()
 
 	go func() {
 		for {
@@ -70,13 +73,9 @@ func main() {
 				log.Printf("starting listening")
 			}
 
-			ctx, cancel := context.WithCancel(context.Background())
-
 			if err := consumer.Listen(ctx); err != nil {
-				log.Errorf(err, "err := consumer.Listen(context.Background())")
+				log.Errorf(err, "err := consumer.Listen(ctx)")
 			}
-
-			cancel()
 
 			time.Sleep(time.Second)
 		}
@@ -89,8 +88,8 @@ func main() {
 
 		log.Printf("shutting down")
 
-		if err := consumer.Shutdown(context.Background()); err != nil {
-			log.Errorf(err, "err := consumer.Shutdown(context.Background())")
+		if err := consumer.Shutdown(ctx); err != nil {
+			log.Errorf(err, "err := consumer.Shutdown(ctx)")
 		}
 	}()
 
