@@ -15,7 +15,7 @@ import (
 
 const (
 	batchBytes   = 2 << 21
-	batchSize    = 100
+	batchSize    = 50
 	batchTimeout = time.Second * 5
 )
 
@@ -27,14 +27,14 @@ type Config struct {
 	KafkaBrokers []string `env:"KAFKA_BROKERS,required"`
 }
 
-func publishIndex(publisher *kafko.Publisher, index int, log *log.LoggerInternal) error {
+func publishIndex(publisher *kafko.Publisher, index int) error {
 	payload := map[string]interface{}{
 		"id": index,
 	}
 
 	msg, err := json.Marshal(payload)
 	if err != nil {
-		log.Panicf(err, "cannot marshal")
+		return errors.Wrap(err, "cannot marshal")
 	}
 
 	if err := publisher.Publish(context.Background(), msg); err != nil {
@@ -44,27 +44,48 @@ func publishIndex(publisher *kafko.Publisher, index int, log *log.LoggerInternal
 	return nil
 }
 
+type handlerProcessDroppedMsg struct {
+	log kafko.Logger
+}
+
+func (handler *handlerProcessDroppedMsg) Handle(ctx context.Context, msg *kafka.Message) error {
+	handler.log.Printf("handle process dropped msg: %s", string(msg.Value))
+
+	select {
+	case <-ctx.Done():
+		return errors.Wrap(ctx.Err(), "handling error")
+	case <-time.After(batchTimeout):
+		handler.log.Printf("waited some timeout... I already saved all the necessary info")
+
+		return nil
+	}
+}
+
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
 
-	const maxTaskAtOnce = 500
+	const maxTaskAtOnce = 1000
 
-	opts := kafko.NewOptionsPublisher().WithWriterFactory(func() kafko.Writer {
-		writer := &kafka.Writer{
-			Addr:         kafka.TCP(cfg.KafkaBrokers...),
-			Topic:        cfg.KafkaTopic,
-			ErrorLogger:  log,
-			BatchBytes:   batchBytes,
-			BatchSize:    batchSize,
-			BatchTimeout: batchTimeout,
-			//Logger:       log,
-		}
+	opts := kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			writer := &kafka.Writer{
+				Addr:         kafka.TCP(cfg.KafkaBrokers...),
+				Topic:        cfg.KafkaTopic,
+				ErrorLogger:  log,
+				BatchBytes:   batchBytes,
+				BatchSize:    batchSize,
+				BatchTimeout: batchTimeout,
+				Logger:       log,
+			}
 
-		writer.AllowAutoTopicCreation = true
+			writer.AllowAutoTopicCreation = true
 
-		return writer
-	})
+			return writer
+		}).
+		WithProcessDroppedMsg(&handlerProcessDroppedMsg{
+			log: log,
+		})
 
 	publisher := kafko.NewPublisher(log, opts)
 	tasksAtOnce := make(chan struct{}, maxTaskAtOnce)
@@ -75,16 +96,9 @@ func main() {
 				<-tasksAtOnce
 			}()
 
-			for {
-				err := publishIndex(publisher, index, log)
-				if err != nil {
-					log.Errorf(err, "something went wrong")
-					time.Sleep(time.Second)
-
-					continue
-				}
-
-				break
+			err := publishIndex(publisher, index)
+			if err != nil {
+				log.Errorf(err, "something went wrong")
 			}
 		}(index)
 

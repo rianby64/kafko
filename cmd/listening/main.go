@@ -23,30 +23,42 @@ type Config struct {
 }
 
 type ListenerHandler struct {
-	log log.Logger
+	log     log.Logger
+	showLog bool
 }
 
 func (handler *ListenerHandler) Handle(_ context.Context, msg *kafka.Message) error {
+	if !handler.showLog {
+		return nil
+	}
+
 	payload := string(msg.Value)
 
-	handler.log.Printf("MSG OK (%s)", payload)
+	handler.log.Printf("OK (%s) (partition=%d)", payload, msg.Partition)
 
 	return nil
 }
 
+func (handler *ListenerHandler) ToggleLoggin() {
+	handler.showLog = !handler.showLog
+}
+
 func NewListenerHandler(log log.Logger) *ListenerHandler {
 	return &ListenerHandler{
-		log: log,
+		showLog: true,
+		log:     log,
 	}
 }
 
 func main() {
 	log := log.NewLogger()
 	cfg := loadConfig(log)
+	breakListenLoop := make(chan struct{}, 1)
 	shutdown := make(chan os.Signal, 1)
 
 	signal.Notify(shutdown, syscall.SIGTERM, syscall.SIGINT)
 
+	listenerHandler := NewListenerHandler(log)
 	opts := kafko.NewOptionsListener().WithReaderFactory(func() kafko.Reader {
 		return kafka.NewReader(kafka.ReaderConfig{
 			GroupID:     cfg.KafkaGroupID,
@@ -56,7 +68,7 @@ func main() {
 			ErrorLogger: log,
 			//Logger:      log,
 		})
-	}).WithHandler(NewListenerHandler(log))
+	}).WithHandler(listenerHandler)
 
 	consumer := kafko.NewListener(log, opts)
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,11 +78,9 @@ func main() {
 	go func() {
 		for {
 			select {
-			case <-shutdown:
-				log.Printf("shutted down")
-
+			case <-breakListenLoop:
+				return
 			default:
-				log.Printf("starting listening")
 			}
 
 			if err := consumer.Listen(ctx); err != nil {
@@ -81,19 +91,23 @@ func main() {
 		}
 	}()
 
+	showHandlerLogChan := make(chan os.Signal, 1)
+	signal.Notify(showHandlerLogChan, syscall.SIGUSR1)
+
 	go func() {
-		<-shutdown
-
-		defer close(shutdown)
-
-		log.Printf("shutting down")
-
-		if err := consumer.Shutdown(ctx); err != nil {
-			log.Errorf(err, "err := consumer.Shutdown(ctx)")
+		for range showHandlerLogChan {
+			listenerHandler.ToggleLoggin()
 		}
 	}()
 
 	<-shutdown
+	close(breakListenLoop)
+
+	log.Printf("shutting down")
+
+	if err := consumer.Shutdown(ctx); err != nil {
+		log.Errorf(err, "err := consumer.Shutdown(ctx)")
+	}
 
 	log.Printf("bye")
 }
