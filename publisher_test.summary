@@ -1,0 +1,9 @@
+Test_Publisher_single_message_OK:
+  // Here I expect the positive execution of the publish method
+- :> START
+-    Call Publish(ctx, msg)  -> OK
+-    WriteMessages(ctx, msg) -> OK
+-    Call Shutdown(ctx)      -> OK
+-    Reader.Close            -> OK
+- <: END
+

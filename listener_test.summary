@@ -148,3 +148,16 @@ Test_reListen_reason_Commit_err:
 -    Context cancels     -> OK
 -    Listen breaks       -> returns no error since Shutdown has been called -> OK
 - <: END
+
+
+
+Test_Listener_Shutdown_avoid_listening_OK:
+  // TODO: Here I expect that shutdown blocks any further listening
+- :> START
+-    Call Listen     -> it blocks as expected
+-    Call Shutdown   -> OK
+-    Reader.Close    -> OK
+-    Context cancels -> OK
+-    Listen breaks   -> returns no error since Shutdown has been called -> OK
+-    Call Listen     -> returns ErrAlreadyClosed
+- <: END
