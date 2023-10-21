@@ -7,3 +7,26 @@ Test_Publisher_single_message_OK:
 -    Reader.Close            -> OK
 - <: END
 
+
+Test_Publisher_single_message_WriteMessages_err_OK:
+  // Here I expect the immediately failing of a single WriteMessage 
+  // doesn't block the shutdown of the publisher
+- :> START
+-    Call Publish(ctx, msg)         -> OK
+-    WriteMessages(ctx, msg)        -> error
+-    Call Shutdown(ctx)             -> OK
+-    Reader.Close                   -> OK
+- <: END
+
+
+Test_Publisher_single_message_WriteMessages_err_OK:
+  // Here I expect the immediately failing of a single WriteMessage 
+  // doesn't block the shutdown of the publisher
+- :> START
+-    Call Publish(ctx, msg)          -> OK
+-    WriteMessages(ctx, msg)         -> error
+-    HandlerDroppedMsg(ctx, msg)     -> OK
+-    Call Shutdown(ctx)              -> OK
+-    Reader.Close                    -> OK
+- <: END
+

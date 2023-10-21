@@ -70,12 +70,12 @@ func obtainFinalOptsListener(log Logger, opts []*OptionsListener) *OptionsListen
 
 			return nil
 		},
-		time: &timeDefault{},
 
 		metricMessagesProcessed: new(nopIncrementer),
 		metricMessagesError:     new(nopIncrementer),
 		metricErrors:            new(nopIncrementer),
 		metricDurationProcess:   new(nopDuration),
+		time:                    new(timeDefault),
 
 		processMsg: nil,
 	}

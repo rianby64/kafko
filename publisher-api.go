@@ -22,7 +22,7 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 
 // Shutdown method to perform a graceful shutdown.
 func (publisher *Publisher) Shutdown(_ context.Context) error {
-	if err := publisher.writer.Close(); err != nil {
+	if err := publisher.closeWriter(); err != nil {
 		return errors.Wrap(err, "cannot close the writer")
 	}
 

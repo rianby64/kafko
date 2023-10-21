@@ -1,10 +1,10 @@
 package kafko
 
 type OptionsPublisher struct {
-	processDroppedMsg MsgHandler
+	droppedMsg MsgHandler
 
 	writerFactory   WriterFactory
-	keyGenerator    keyGenerator
+	keyGenerator    KeyGenerator
 	backoffStrategy BackoffStrategy
 
 	metricMessages Incrementer
@@ -14,8 +14,8 @@ type OptionsPublisher struct {
 	time Time
 }
 
-func (opts *OptionsPublisher) WithProcessDroppedMsg(handler MsgHandler) *OptionsPublisher {
-	opts.processDroppedMsg = handler
+func (opts *OptionsPublisher) WithHandlerDropped(handler MsgHandler) *OptionsPublisher {
+	opts.droppedMsg = handler
 
 	return opts
 }
@@ -26,7 +26,7 @@ func (opts *OptionsPublisher) WithWriterFactory(writerFactory WriterFactory) *Op
 	return opts
 }
 
-func (opts *OptionsPublisher) WithKeyGenerator(keyGenerator keyGenerator) *OptionsPublisher {
+func (opts *OptionsPublisher) WithKeyGenerator(keyGenerator KeyGenerator) *OptionsPublisher {
 	opts.keyGenerator = keyGenerator
 
 	return opts
@@ -63,13 +63,15 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 
 			return nil
 		},
-		processDroppedMsg: new(defaultProcessDroppedMsg),
-		keyGenerator:      new(keyGeneratorDefault),
-		backoffStrategy:   new(backoffStrategyDefault),
-		metricMessages:    new(nopIncrementer),
-		metricErrors:      new(nopIncrementer),
-		metricDuration:    new(nopDuration),
-		time:              new(timeDefault),
+
+		metricMessages: new(nopIncrementer),
+		metricErrors:   new(nopIncrementer),
+		metricDuration: new(nopDuration),
+		time:           new(timeDefault),
+
+		droppedMsg:      new(defaultHandlerDroppedMsg),
+		keyGenerator:    new(defaultKeyGenerator),
+		backoffStrategy: new(defaultBackoffStrategy),
 	}
 
 	for _, opt := range opts {
@@ -77,8 +79,8 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 			finalOpts.writerFactory = opt.writerFactory
 		}
 
-		if opt.processDroppedMsg != nil {
-			finalOpts.processDroppedMsg = opt.processDroppedMsg
+		if opt.droppedMsg != nil {
+			finalOpts.droppedMsg = opt.droppedMsg
 		}
 
 		if opt.keyGenerator != nil {

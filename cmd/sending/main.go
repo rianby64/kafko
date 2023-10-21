@@ -44,12 +44,12 @@ func publishIndex(publisher *kafko.Publisher, index int) error {
 	return nil
 }
 
-type handlerProcessDroppedMsg struct {
+type handlerDroppedMsg struct {
 	log kafko.Logger
 }
 
-func (handler *handlerProcessDroppedMsg) Handle(ctx context.Context, msg *kafka.Message) error {
-	handler.log.Printf("handle process dropped msg: %s", string(msg.Value))
+func (handler *handlerDroppedMsg) Handle(ctx context.Context, msg *kafka.Message) error {
+	handler.log.Printf("handle dropped msg: %s", string(msg.Value))
 
 	select {
 	case <-ctx.Done():
@@ -83,7 +83,7 @@ func main() {
 
 			return writer
 		}).
-		WithProcessDroppedMsg(&handlerProcessDroppedMsg{
+		WithHandlerDropped(&handlerDroppedMsg{
 			log: log,
 		})
 

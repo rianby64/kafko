@@ -27,7 +27,7 @@ type Publisher struct {
 func (publisher *Publisher) closeWriter() error {
 	if publisher.writer != nil {
 		if err := publisher.writer.Close(); err != nil {
-			return errors.Wrapf(err, "cannot close writer")
+			return err
 		}
 	}
 

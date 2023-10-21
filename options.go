@@ -53,10 +53,10 @@ type nopDuration struct{}
 
 func (n *nopDuration) Observe(float64) {}
 
-type defaultProcessDroppedMsg struct{}
+type defaultHandlerDroppedMsg struct{}
 
 // defaultProcessDroppedMsg logs a dropped message and returns a predefined error.
-func (defaultProcessDroppedMsg) Handle(_ context.Context, msg *kafka.Message) error {
+func (defaultHandlerDroppedMsg) Handle(_ context.Context, msg *kafka.Message) error {
 	return errors.Wrapf(ErrMessageDropped,
 		"msg = %s, key = %s, topic = %s, partition = %d, offset = %d",
 		string(msg.Value),
@@ -67,13 +67,14 @@ func (defaultProcessDroppedMsg) Handle(_ context.Context, msg *kafka.Message) er
 	)
 }
 
-type keyGenerator interface {
+//go:generate mockgen -destination=./mocks/mock_keygenerator.go -package=mocks kafko KeyGenerator
+type KeyGenerator interface {
 	Generate() []byte
 }
 
-type keyGeneratorDefault struct{}
+type defaultKeyGenerator struct{}
 
-func (gen *keyGeneratorDefault) Generate() []byte {
+func (gen *defaultKeyGenerator) Generate() []byte {
 	return nil // add an example with this piece of code: []byte(uuid.New().String())
 }
 
@@ -82,9 +83,9 @@ type BackoffStrategy interface {
 	Wait(ctx context.Context)
 }
 
-type backoffStrategyDefault struct{}
+type defaultBackoffStrategy struct{}
 
-func (gen *backoffStrategyDefault) Wait(ctx context.Context) {
+func (gen *defaultBackoffStrategy) Wait(ctx context.Context) {
 	select {
 	case <-time.After(waitNextAtempt):
 		return
