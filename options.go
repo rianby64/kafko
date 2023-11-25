@@ -9,6 +9,7 @@ import (
 )
 
 var (
+	ErrRetryReached        = errors.New("retry reached")
 	ErrMessageDropped      = errors.New("message dropped")
 	ErrResourceUnavailable = errors.New("resource unavailable")
 )
@@ -78,18 +79,37 @@ func (gen *defaultKeyGenerator) Generate() []byte {
 	return nil // add an example with this piece of code: []byte(uuid.New().String())
 }
 
+type BackoffStrategyFactory func() BackoffStrategy
+
 //go:generate mockgen -destination=./mocks/mock_backoff_strategy.go -package=mocks kafko BackoffStrategy
 type BackoffStrategy interface {
-	Wait(ctx context.Context)
+	Wait(ctx context.Context) error
 }
 
-type defaultBackoffStrategy struct{}
+func defaultBackoffStrategyFactory() BackoffStrategy {
+	return &defaultBackoffStrategy{}
+}
 
-func (gen *defaultBackoffStrategy) Wait(ctx context.Context) {
+type defaultBackoffStrategy struct {
+	numberOfAttempts int
+}
+
+// Wait is intended to implement a wait using sleep.
+//
+// If this method returns an error then it means, the loop should break.
+//
+// If this method returns nil then it means, the loop should retry.
+func (gen *defaultBackoffStrategy) Wait(ctx context.Context) error {
+	gen.numberOfAttempts++
+
+	if gen.numberOfAttempts > maxAttempts {
+		return ErrRetryReached
+	}
+
 	select {
-	case <-time.After(waitNextAtempt):
-		return
+	case <-time.After(waitNextAttempt):
+		return nil
 	case <-ctx.Done():
-		return
+		return ctx.Err()
 	}
 }

@@ -3,9 +3,9 @@ package kafko
 type OptionsPublisher struct {
 	droppedMsg MsgHandler
 
-	writerFactory   WriterFactory
-	keyGenerator    KeyGenerator
-	backoffStrategy BackoffStrategy
+	writerFactory          WriterFactory
+	keyGenerator           KeyGenerator
+	backoffStrategyFactory BackoffStrategyFactory
 
 	metricMessages Incrementer
 	metricErrors   Incrementer
@@ -32,8 +32,8 @@ func (opts *OptionsPublisher) WithKeyGenerator(keyGenerator KeyGenerator) *Optio
 	return opts
 }
 
-func (opts *OptionsPublisher) WithBackoffStrategy(backoffStrategy BackoffStrategy) *OptionsPublisher {
-	opts.backoffStrategy = backoffStrategy
+func (opts *OptionsPublisher) WithBackoffStrategyFactory(backoffStrategyFactory BackoffStrategyFactory) *OptionsPublisher {
+	opts.backoffStrategyFactory = backoffStrategyFactory
 
 	return opts
 }
@@ -69,9 +69,9 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 		metricDuration: new(nopDuration),
 		time:           new(timeDefault),
 
-		droppedMsg:      new(defaultHandlerDroppedMsg),
-		keyGenerator:    new(defaultKeyGenerator),
-		backoffStrategy: new(defaultBackoffStrategy),
+		droppedMsg:             new(defaultHandlerDroppedMsg),
+		keyGenerator:           new(defaultKeyGenerator),
+		backoffStrategyFactory: defaultBackoffStrategyFactory,
 	}
 
 	for _, opt := range opts {
@@ -87,8 +87,8 @@ func obtainFinalOptionsPublisher(log Logger, opts ...*OptionsPublisher) *Options
 			finalOpts.keyGenerator = opt.keyGenerator
 		}
 
-		if opt.backoffStrategy != nil {
-			finalOpts.backoffStrategy = opt.backoffStrategy
+		if opt.backoffStrategyFactory != nil {
+			finalOpts.backoffStrategyFactory = opt.backoffStrategyFactory
 		}
 
 		if opt.metricMessages != nil {

@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	dialerTimeout  = time.Second * time.Duration(10)
-	waitNextAtempt = time.Second * time.Duration(3)
+	dialerTimeout   = time.Second * time.Duration(10)
+	waitNextAttempt = time.Second * time.Duration(3)
+	maxAttempts     = 3
 )
 
 func NewDialer(username, password string) *kafka.Dialer {

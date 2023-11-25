@@ -9,15 +9,26 @@ import (
 
 // Publish accepts only one payload, is concurrent-safe. Call it from different places at the same time.
 func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
+	backoff := publisher.opts.backoffStrategyFactory()
 	msg := kafka.Message{
 		Value: payload,
 	}
 
-	if err := publisher.writer.WriteMessages(ctx, msg); err != nil {
-		return errors.Wrap(err, "cannot write message")
-	}
+	for {
+		if err := publisher.writer.WriteMessages(ctx, msg); err != nil {
+			if err := publisher.opts.droppedMsg.Handle(ctx, &msg); err != nil {
+				return errors.Wrap(err, "cannot handle dropped msg")
+			}
 
-	return nil
+			if errors.Is(backoff.Wait(ctx), ErrRetryReached) {
+				return err
+			}
+
+			continue
+		}
+
+		return nil
+	}
 }
 
 // Shutdown method to perform a graceful shutdown.

@@ -39,9 +39,11 @@ func (m *MockBackoffStrategy) EXPECT() *MockBackoffStrategyMockRecorder {
 }
 
 // Wait mocks base method.
-func (m *MockBackoffStrategy) Wait(arg0 context.Context) {
+func (m *MockBackoffStrategy) Wait(arg0 context.Context) error {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Wait", arg0)
+	ret := m.ctrl.Call(m, "Wait", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
 }
 
 // Wait indicates an expected call of Wait.

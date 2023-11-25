@@ -8,25 +8,16 @@ Test_Publisher_single_message_OK:
 - <: END
 
 
-Test_Publisher_single_message_WriteMessages_err_OK:
+Test_Publisher_single_message_WriteMessages_err_first_time_but_second_time_noerr_OK:
   // Here I expect the immediately failing of a single WriteMessage 
   // doesn't block the shutdown of the publisher
 - :> START
 -    Call Publish(ctx, msg)         -> OK
+-    back-off strategy = Factory()  -> OK
 -    WriteMessages(ctx, msg)        -> error
+-    handler dropped msg(ctx, msg)  -> OK
+-    back-off strategy(ctx)         -> OK
+-    WriteMessages(ctx, msg)        -> OK
 -    Call Shutdown(ctx)             -> OK
 -    Reader.Close                   -> OK
 - <: END
-
-
-Test_Publisher_single_message_WriteMessages_err_OK:
-  // Here I expect the immediately failing of a single WriteMessage 
-  // doesn't block the shutdown of the publisher
-- :> START
--    Call Publish(ctx, msg)          -> OK
--    WriteMessages(ctx, msg)         -> error
--    HandlerDroppedMsg(ctx, msg)     -> OK
--    Call Shutdown(ctx)              -> OK
--    Reader.Close                    -> OK
-- <: END
-

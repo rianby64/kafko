@@ -82,7 +82,7 @@ func Test_Publisher_single_message_OK(t *testing.T) {
 	assert.Nil(t, shutdownErr)
 }
 
-func Test_Publisher_single_message_WriteMessages_err_OK(t *testing.T) {
+func Test_Publisher_single_message_WriteMessages_err_first_time_but_second_time_noerr_OK(t *testing.T) {
 	t.Parallel()
 
 	mockPayload := []byte("mocked message")
@@ -97,11 +97,23 @@ func Test_Publisher_single_message_WriteMessages_err_OK(t *testing.T) {
 
 	ctxMatcher := newContextMatcherForPublisher(ctx)
 	mockWriter := mocks.NewMockWriter(ctrl)
+	mockHandlerDroppedMsg := mocks.NewMockMsgHandler(ctrl)
+	mockBackoff := mocks.NewMockBackoffStrategy(ctrl)
 
 	gomock.InOrder(
 		mockWriter.EXPECT().
 			WriteMessages(ctxMatcher, mockMessage).
 			Return(errRandomForPublisher),
+
+		mockHandlerDroppedMsg.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(nil),
+
+		mockBackoff.EXPECT().Wait(ctxMatcher).Return(nil),
+
+		mockWriter.EXPECT().
+			WriteMessages(ctxMatcher, mockMessage).
+			Return(nil),
 
 		mockWriter.EXPECT().
 			Close().
@@ -112,13 +124,17 @@ func Test_Publisher_single_message_WriteMessages_err_OK(t *testing.T) {
 	opts := kafko.NewOptionsPublisher().
 		WithWriterFactory(func() kafko.Writer {
 			return mockWriter
+		}).
+		WithHandlerDropped(mockHandlerDroppedMsg).
+		WithBackoffStrategyFactory(func() kafko.BackoffStrategy {
+			return mockBackoff
 		})
 
 	publisher := kafko.NewPublisher(actualLog, opts)
 
 	publishErr := publisher.Publish(ctx, mockPayload)
 
-	assert.ErrorIs(t, publishErr, errRandomForPublisher)
+	assert.Nil(t, publishErr)
 
 	shutdownErr := publisher.Shutdown(ctx)
 
