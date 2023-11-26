@@ -10,7 +10,7 @@ Test_Publisher_single_message_OK:
 
 Test_Publisher_single_message_WriteMessages_err_first_time_but_second_time_noerr_OK:
   // Here I expect the immediately failing of a single WriteMessage 
-  // doesn't block the shutdown of the publisher
+  // follows a second successful try
 - :> START
 -    Call Publish(ctx, msg)         -> OK
 -    back-off strategy = Factory()  -> OK
@@ -18,6 +18,39 @@ Test_Publisher_single_message_WriteMessages_err_first_time_but_second_time_noerr
 -    handler dropped msg(ctx, msg)  -> OK
 -    back-off strategy(ctx)         -> OK
 -    WriteMessages(ctx, msg)        -> OK
+-    Call Shutdown(ctx)             -> OK
+-    Reader.Close                   -> OK
+- <: END
+
+
+Test_Publisher_single_message_WriteMessages_err_then_backoff_err:
+  // Here I expect the immediately failing of a single WriteMessage
+  // with a failing backoff handling finishes the Publish call with error
+- :> START
+-    Call Publish(ctx, msg)         -> OK
+-    back-off strategy = Factory()  -> OK
+-    WriteMessages(ctx, msg)        -> error
+-    handler dropped msg(ctx, msg)  -> OK
+-    back-off strategy(ctx)         -> error
+-    Publish breaks                 -> returns join(ErrRandomPublisher, ErrRetryReached)
+                                       as Backoff and Writer.WriteMessages failed with
+                                       theses errors -> OK
+-    Call Shutdown(ctx)             -> OK
+-    Reader.Close                   -> OK
+- <: END
+
+
+Test_Publisher_single_message_WriteMessages_err_handle_dropped_msg_err:
+  // Here I expect the immediately failing of a single WriteMessage
+  // with a failing handling of dropped msg finishes the Publish call with error
+- :> START
+-    Call Publish(ctx, msg)         -> OK
+-    back-off strategy = Factory()  -> OK
+-    WriteMessages(ctx, msg)        -> error
+-    handler dropped msg(ctx, msg)  -> error
+-    Publish breaks                 -> returns join(ErrRandomPublisher, ErrRandomHandler)
+                                       as Handle and Writer.WriteMessages failed with
+                                       theses errors -> OK
 -    Call Shutdown(ctx)             -> OK
 -    Reader.Close                   -> OK
 - <: END

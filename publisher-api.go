@@ -2,6 +2,7 @@ package kafko
 
 import (
 	"context"
+	errorsStd "errors"
 
 	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
@@ -16,12 +17,12 @@ func (publisher *Publisher) Publish(ctx context.Context, payload []byte) error {
 
 	for {
 		if err := publisher.writer.WriteMessages(ctx, msg); err != nil {
-			if err := publisher.opts.droppedMsg.Handle(ctx, &msg); err != nil {
-				return errors.Wrap(err, "cannot handle dropped msg")
+			if errDroppedMsg := publisher.opts.droppedMsg.Handle(ctx, &msg); errDroppedMsg != nil {
+				return errors.Wrap(errorsStd.Join(err, errDroppedMsg), "cannot handle message")
 			}
 
-			if errors.Is(backoff.Wait(ctx), ErrRetryReached) {
-				return err
+			if errBackoff := backoff.Wait(ctx); errBackoff != nil {
+				return errorsStd.Join(err, errBackoff)
 			}
 
 			continue

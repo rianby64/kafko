@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	// errCloseForPublisher  = errors.New("a close error for publisher")
-	errRandomForPublisher = errors.New("a random error for publisher")
+	errRandomForBackoffStrategy   = errors.New("a random error for backoff handler")
+	errRandomForPublisher         = errors.New("a random error for publisher")
+	errRandomForHandlerDroppedMsg = errors.New("a random error for handler dropped msg")
 )
 
 type contextMatcherForPublisher struct {
@@ -135,6 +136,112 @@ func Test_Publisher_single_message_WriteMessages_err_first_time_but_second_time_
 	publishErr := publisher.Publish(ctx, mockPayload)
 
 	assert.Nil(t, publishErr)
+
+	shutdownErr := publisher.Shutdown(ctx)
+
+	assert.Nil(t, shutdownErr)
+}
+
+func Test_Publisher_single_message_WriteMessages_err_then_backoff_err(t *testing.T) {
+	t.Parallel()
+
+	mockPayload := []byte("mocked message")
+	mockMessage := kafka.Message{
+		Value: mockPayload,
+	}
+
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	defer ctrl.Finish()
+
+	ctxMatcher := newContextMatcherForPublisher(ctx)
+	mockWriter := mocks.NewMockWriter(ctrl)
+	mockHandlerDroppedMsg := mocks.NewMockMsgHandler(ctrl)
+	mockBackoff := mocks.NewMockBackoffStrategy(ctrl)
+
+	gomock.InOrder(
+		mockWriter.EXPECT().
+			WriteMessages(ctxMatcher, mockMessage).
+			Return(errRandomForPublisher),
+
+		mockHandlerDroppedMsg.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(nil),
+
+		mockBackoff.EXPECT().Wait(ctxMatcher).Return(errRandomForBackoffStrategy),
+
+		mockWriter.EXPECT().
+			Close().
+			Return(nil),
+	)
+
+	actualLog := log.NewMockLogger()
+	opts := kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return mockWriter
+		}).
+		WithHandlerDropped(mockHandlerDroppedMsg).
+		WithBackoffStrategyFactory(func() kafko.BackoffStrategy {
+			return mockBackoff
+		})
+
+	publisher := kafko.NewPublisher(actualLog, opts)
+
+	publishErr := publisher.Publish(ctx, mockPayload)
+
+	assert.ErrorIs(t, publishErr, errRandomForBackoffStrategy)
+	assert.ErrorIs(t, publishErr, errRandomForPublisher)
+
+	shutdownErr := publisher.Shutdown(ctx)
+
+	assert.Nil(t, shutdownErr)
+}
+
+func Test_Publisher_single_message_WriteMessages_err_handle_dropped_msg_err(t *testing.T) {
+	t.Parallel()
+
+	mockPayload := []byte("mocked message")
+	mockMessage := kafka.Message{
+		Value: mockPayload,
+	}
+
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+
+	defer ctrl.Finish()
+
+	ctxMatcher := newContextMatcherForPublisher(ctx)
+	mockWriter := mocks.NewMockWriter(ctrl)
+	mockHandlerDroppedMsg := mocks.NewMockMsgHandler(ctrl)
+
+	gomock.InOrder(
+		mockWriter.EXPECT().
+			WriteMessages(ctxMatcher, mockMessage).
+			Return(errRandomForPublisher),
+
+		mockHandlerDroppedMsg.EXPECT().
+			Handle(ctxMatcher, &mockMessage).
+			Return(errRandomForHandlerDroppedMsg),
+
+		mockWriter.EXPECT().
+			Close().
+			Return(nil),
+	)
+
+	actualLog := log.NewMockLogger()
+	opts := kafko.NewOptionsPublisher().
+		WithWriterFactory(func() kafko.Writer {
+			return mockWriter
+		}).
+		WithHandlerDropped(mockHandlerDroppedMsg)
+
+	publisher := kafko.NewPublisher(actualLog, opts)
+
+	publishErr := publisher.Publish(ctx, mockPayload)
+
+	assert.ErrorIs(t, publishErr, errRandomForHandlerDroppedMsg)
+	assert.ErrorIs(t, publishErr, errRandomForPublisher)
 
 	shutdownErr := publisher.Shutdown(ctx)
 
