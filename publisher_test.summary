@@ -54,3 +54,24 @@ Test_Publisher_single_message_WriteMessages_err_handle_dropped_msg_err:
 -    Call Shutdown(ctx)             -> OK
 -    Reader.Close                   -> OK
 - <: END
+
+
+Test_Publisher_call_tooSlow_WriteMessages_but_Shutdown_cancels_WriteMessage_OK:
+  // Here I expect the immediately exit from a very slow single WriteMessage after
+  // calling Shutdown with ctx
+- :> START
+-    Call Publish(ctx, msg)         -> OK
+-    back-off strategy = Factory()  -> OK
+-    WriteMessages(ctx, msg)        -> error (but too slow, 10 secs at least)
+-    | Call Shutdown(ctx)             -> OK -> this interrupts WriteMessages' ctx, 
+                                               so WriteMessages fails with Context.Canceled
+-    handler dropped msg(ctx, msg)  -> error
+-    Publish breaks                 -> returns join(context.Canceled, ErrRandomHandler)
+                                       as Handle and Writer.WriteMessages failed with
+                                       theses errors -> OK
+-    | Reader.Close                   -> OK, but it's being called only after
+                                         handle dropeed msg has finished.
+     | Notice that Shutdown ends if either:
+     | 1. Reader.Close finishes
+     | 2. Context has been canceled
+- <: END
